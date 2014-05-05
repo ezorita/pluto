@@ -73,3 +73,4 @@ unsigned int * seqid         (char *, int *);
 void           addlocus      (loclst_t **, int);
 void           addchrom      (chrstack_t **, char *, int);
 unsigned int   nodeaddr      (unsigned int);
+unsigned char  writegen      (int, char *, int, unsigned char);

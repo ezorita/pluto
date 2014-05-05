@@ -19,7 +19,11 @@ main
       exit(EXIT_FAILURE);
    }
    char * filename = strtok(argv[1], ".");
-
+   char * outfile = malloc(strlen(filename) + 5);
+   strcpy(outfile, filename);
+   outfile = strcat(outfile, ".pgf");
+   int fd = open(outfile,O_CREAT | O_TRUNC | O_WRONLY, 0644);
+   
    // Allocate tree.
    char * tree = (char *) calloc(sizeof(char), TREESZ);
    if (tree == NULL) {
@@ -45,14 +49,20 @@ main
 
    int end = 0, i = 0;
    long loc = 0;
+   unsigned char last = 0;
 
    // Read file, fill tree and create a loci list for each sequence.
    while (end == 0) {
+      // Read line and remove \n.
       nread = getline(&seq, &nchar, input);
+      seq[nread - 1] = 0;
+
       // Check end of chromosome or EOF.
       if (nread == -1 || seq[0] == '>') {
          // Process chunk and update local and locus index till the end of the chromosome.
          if (i > 0) {
+            // First write genome, then process index.
+            last = writegen(fd, chunk, i, last);
             procseqs(tree, loclist, loc, i, chunk);
             loc += i;
             i = 0;
@@ -63,13 +73,15 @@ main
             addchrom(&chrstack, seq+1, loc);
          else if (nread == -1) {
             // Add 'end' sequence at the current locus.
-            addchrom(&chrstack, "End of index.", loc);
+            addchrom(&chrstack, "END", loc);
             end = 1;
          }
          continue;
       }
       // Process data if chunk is full.
       if (i + nread - 1 > CHUNKSZ) {
+         // Write genome and process index.
+         last = writegen(fd, chunk, i, last);
          int offset = procseqs(tree, loclist, loc, i, chunk);
          loc += i;
          i = offset;
@@ -79,13 +91,9 @@ main
       memcpy(chunk + i, seq, nread - 1);
       i += nread - 1;
    }
+   outfile[strlen(outfile)-2] = 't';
 
-   // Write tree.
-   char * outfile = malloc(strlen(filename) + 5);
-   strcpy(outfile, filename);
-   outfile = strcat(outfile, ".ptf");
-
-   int fd = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+   fd = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
    unsigned long wbytes = write(fd, tree, TREESZ*sizeof(char));
    if (wbytes < TREESZ)
       fprintf(stderr, "I/O error: tree (commited %lu bytes, %lu bytes written).\n", (unsigned long)TREESZ, wbytes);
@@ -98,8 +106,8 @@ main
 
    FILE * chrout = fopen(outfile, "w");
    for (int i = 0; i < chrstack->pos-1; i++)
-      fprintf(chrout, "%d\n%s\n", chrstack->c[i]->loc, chrstack->c[i]->name);
-   fprintf(chrout, "%d\n%s", chrstack->c[chrstack->pos-1]->loc, chrstack->c[chrstack->pos-1]->name);
+      fprintf(chrout, "%u\n%s\n", chrstack->c[i]->loc, chrstack->c[i]->name);
+   fprintf(chrout, "%u\n%s", chrstack->c[chrstack->pos-1]->loc, chrstack->c[chrstack->pos-1]->name);
    fclose(chrout);
 
    // Allocate index.
@@ -176,6 +184,92 @@ procseqs
    int remainder = nbases - nseqs;
    char * seq = malloc((SEQLEN+1) * sizeof(char));
 
+   // DEBUG:
+   //char currseq[15];
+
+   // Process seqs.
+   for (int i = 0; i < nseqs; i++) {
+      char * seq = chunk + i;
+      int    nids;
+      unsigned int  * seqids = seqid(seq, &nids);
+
+      // Continue if there are too many 'N'.
+      if(seqids == NULL) continue;
+      
+      // DEBUG:
+      //strncpy(currseq, seq, 14);
+      //fprintf(stdout, "valid seq: %s\n\tsubseqs: %d", currseq, nids);
+
+      // For all sequence ids...
+      for (int j = 0; j < nids; j++) {
+         unsigned int sid = seqids[j];
+
+         //DEBUG:
+         //fprintf(stdout, "\tid: %d\n", sid);
+         
+         // Insert nodes in the tree.
+         for (int h = 0; h < SEQLEN; h++) {
+            // Increase height.
+            sid += 0x10000000;
+            // ENABLE node bit.
+            unsigned int bitpos = nodeaddr(sid);
+
+            tree[bitpos/8] |= 1 << (bitpos%8);
+
+            //DEBUG:
+            //fprintf(stdout, "\t\taddr: %d (byte %d + bit %d)\n", bitpos, bitpos/8, bitpos%8);
+         }
+
+         // Add locus to loclst.
+         sid &= SEQMASK;
+         addlocus(loclst + sid, genpos + i);
+      }
+
+      free(seqids);
+   }
+
+   free(seq);
+
+   // Save remainders.
+   memmove(chunk, chunk + nseqs, remainder);
+   return remainder;
+}
+
+unsigned char
+writegen
+(
+  int             fd,
+  char          * chunk,
+  int             nbases,
+  unsigned char   last
+)
+// SYNOPSIS:                                                              
+//   Writes to the genome file coding each base with 4 bits:
+//     '0000' = A
+//     '0001' = C
+//     '0010' = G
+//     '0011' = T
+//     '1111' = N
+//                                                                        
+// PARAMETERS:                                                            
+//   fd:     open file descriptor pointing to the output genome file.
+//   chunk:  buffer containing the set of bases to be processed.
+//   nbases: number of valid bases present in 'chunk'.
+//   last:   last 4 spare bits returned by the last writegen call.
+//                                                                        
+// RETURN:                                                                
+//   A char containing the last 4 bits if [(nbases+(last>0))%2 == 1]. 0 otherwise.
+//                                                                        
+// SIDE EFFECTS:                                                          
+//   None.
+//   
+{
+   // First add remainder.
+   nbases += (last != 0);
+   int nbytes = nbases / 2;
+   int remain = nbases % 2;
+   unsigned char * values = calloc(sizeof(char), nbytes + remain);
+
    // Uppercase bases.
    for (int i = 0; i < nbases; i++) {
       switch (chunk[i]) {
@@ -193,45 +287,48 @@ procseqs
          break;
       case 'n':
          chunk[i] = 'N';
-      default:
          break;
       }
    }
-   // Process seqs.
-   for (int i = 0; i < nseqs; i++) {
-      char * seq = chunk + i;
-      int    nids;
-      unsigned int  * seqids = seqid(seq, &nids);
 
-      // Continue if there are too many 'N'.
-      if(seqids == NULL) continue;
-
-      // For all sequence ids...
-      for (int j = 0; j < nids; j++) {
-         unsigned int seqid = seqids[j];
-
-         // Insert nodes in the tree.
-         for (int h = 0; h < SEQLEN; h++) {
-            // Increase height.
-            seq += 0x100000000;
-            // ENABLE node bit.
-            unsigned int bitpos = nodeaddr(seqid);
-            tree[bitpos/8] |= 1 << (bitpos%8);
-         }
-
-         // Add locus to loclst.
-         seqid &= SEQMASK;
-         addlocus(loclst + seqid, genpos + i);
-      }
-
-      free(seqids);
+   int i = 0;
+   // Do the first base.
+   if (last) {
+      values[0] = last & 0X0F;
+      i++;
    }
 
-   free(seq);
+   for (int j = 0; i < 2*nbytes + remain; i++, j++) {
+      switch (chunk[j]) {
+      case 'C':
+         values[i/2] |= 0x01 << (4*(i%2));
+         break;
+      case 'G':
+         values[i/2] |= 0x02 << (4*(i%2));
+         break;
+      case 'T':
+         values[i/2] |= 0x03 << (4*(i%2));
+         break;
+      case 'N':
+         values[i/2] |= 0x0F << (4*(i%2));
+         break;
+      }
+   }
+   
+   int wbytes = write(fd, values, nbytes);
+   if (wbytes < nbytes) {
+      fprintf(stderr, "I/O error: writegen (commited %d bytes, %d bytes written).\n", nbytes, wbytes);
+      exit(EXIT_FAILURE);
+   }
 
-   // Save remainders.
-   memmove(chunk, chunk + nseqs, remainder);
-   return remainder;
+   if (remain) {
+      unsigned char bits = values[nbytes];
+      free(values);
+      return bits | 0xF0;
+   }
+
+   free(values);
+   return 0;
 }
 
 
@@ -241,6 +338,23 @@ seqid
  char * seq,
  int  * nids
  )
+// SYNOPSIS:                                                              
+//   Generates the ID of the sequence pointed by seq. If the sequence
+//   contains up to 'MAXUNKN' unknowns ('N'), seqid generates all the
+//   combinations of the sequence obtained by replacing 'N' by 'ACTG'.
+//   The function returns NULL otherwise.
+//                                                                        
+// PARAMETERS:                                                            
+//   seq: String of the sequence (null-termination is not necessary).
+//                                                                        
+// RETURN:                                                                
+//   Pointer to an array of unsigned ints containing all the ids or
+//   NULL if the number of unknowns is found to be greater than MAXUNKN.
+//   *nids: number of sequence ids generated by substituting unknowns.
+//                                                                        
+// SIDE EFFECTS:                                                          
+//   None.
+//   
 {
    char nunkn = 0;
    // Count number of unknowns.
@@ -256,7 +370,7 @@ seqid
    for (int k = 0; k < nseqs; k++) seqid[k] = 0;
 
    // Generate sequence ids.
-   for (int j = SEQLEN-1, u = nseqs/4; j >= 0 ; j--) {
+   for (int j = 0, u = nseqs/4; j < SEQLEN ; j++) {
       switch(seq[j]) {
       case 'C':
          for (int k = 0; k < nseqs; k++) seqid[k] += 1;
@@ -272,7 +386,7 @@ seqid
          u /= 4;
          break;
       }
-      if (j > 0)
+      if (j < SEQLEN - 1)
          for (int k = 0; k < nseqs; k++) seqid[k] <<= 2;
    }
 
@@ -412,5 +526,7 @@ nodeaddr
   unsigned int nodeid
 )
 {
-   return (HOFFSET & (SEQMASK >> (2*(SEQLEN-((nodeid>>28) & 0x0000000F))))) + (nodeid & (SEQMASK >> (2*(SEQLEN-((nodeid>>28) & 0x0000000F)))));
+   // DEBUG:
+   //fprintf(stdout, "nodeid: seq: %d, height: %d, offset: %d, fine: %d\n", nodeid & SEQMASK, (SEQLEN-((nodeid>>28) & 0x0000000F)), HOFFSET & (SEQMASK >> (2*(SEQLEN-((nodeid>>28) & 0x0000000F)))), ((nodeid & SEQMASK) >> (2*(SEQLEN-((nodeid>>28) & 0x0000000F)))));
+   return (HOFFSET & (SEQMASK >> (2*(SEQLEN-((nodeid>>28) & 0x0000000F))))) + ((nodeid & SEQMASK) >> (2*(SEQLEN-((nodeid>>28) & 0x0000000F))));
 }
