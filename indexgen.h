@@ -1,8 +1,12 @@
+#define _GNU_SOURCE
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 // INDEXER PARAMS.
 // Maximum number of unknowns (sequences with count('N') > MAXUNKN will not be indexed).
@@ -36,12 +40,10 @@
 #define INITBSZ 10
 #define CHUNKSZ 1000000
 
-// TREE MACROS.
-#define nodeaddr(id) (HOFFSET & (SEQMASK >> (2*(SEQLEN-((id>>28) & 0x0000000F))))) + (id & (SEQMASK >> (2*(SEQLEN-((id>>28) & 0x0000000F)))))
-
 // DATA TYPES.
 typedef struct llst_t  loclst_t;
-typedef struct sname_t seqname_t;
+typedef struct chrstack_t chrstack_t;
+typedef struct chrom_t chrom_t;
 
 struct llst_t
 {
@@ -49,18 +51,25 @@ struct llst_t
    int    l[];
 };
 
-struct sname_t
+struct chrom_t
 {
-   int    lim;
-   int    pos;
-   int    l[];
-   char * n[];
+   int    loc;
+   char * name;
+};
+
+struct chrstack_t
+{
+          int       lim;
+          int       pos;
+   struct chrom_t * c[];
 };
 
 // FUNCTION HEADERS.
 
-loclst_t  * new_loclist   (int);
-seqname_t * new_namestack (int);
-int         procseqs      (char *, loclst_t *, int, int, char *, int);
-int       * seqid         (char *, int *);
-void        addlocus      (loclst_t **, int);
+loclst_t     * new_loclist   (int);
+chrstack_t   * new_chrstack  (int);
+int            procseqs      (char *, loclst_t **, int, int, char *);
+unsigned int * seqid         (char *, int *);
+void           addlocus      (loclst_t **, int);
+void           addchrom      (chrstack_t **, char *, int);
+unsigned int   nodeaddr      (unsigned int);
