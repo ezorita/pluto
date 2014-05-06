@@ -1,4 +1,4 @@
-#include "indexgen.h"
+#include "plutoindex.h"
 
 int
 main
@@ -184,9 +184,6 @@ procseqs
    int remainder = nbases - nseqs;
    char * seq = malloc((SEQLEN+1) * sizeof(char));
 
-   // DEBUG:
-   //char currseq[15];
-
    // Process seqs.
    for (int i = 0; i < nseqs; i++) {
       char * seq = chunk + i;
@@ -195,18 +192,11 @@ procseqs
 
       // Continue if there are too many 'N'.
       if(seqids == NULL) continue;
-      
-      // DEBUG:
-      //strncpy(currseq, seq, 14);
-      //fprintf(stdout, "valid seq: %s\n\tsubseqs: %d", currseq, nids);
 
       // For all sequence ids...
       for (int j = 0; j < nids; j++) {
          unsigned int sid = seqids[j];
 
-         //DEBUG:
-         //fprintf(stdout, "\tid: %d\n", sid);
-         
          // Insert nodes in the tree.
          for (int h = 0; h < SEQLEN; h++) {
             // Increase height.
@@ -215,9 +205,6 @@ procseqs
             unsigned int bitpos = nodeaddr(sid);
 
             tree[bitpos/8] |= 1 << (bitpos%8);
-
-            //DEBUG:
-            //fprintf(stdout, "\t\taddr: %d (byte %d + bit %d)\n", bitpos, bitpos/8, bitpos%8);
          }
 
          // Add locus to loclst.
