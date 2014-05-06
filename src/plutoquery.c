@@ -70,7 +70,7 @@ int main(int argc, char * argv[]) {
    int nids;
    uint * sid = seqtoid(seq, &nids);
    
-   // For each sequence...
+   // For each sequence:
    for (int i=0; i<nids; i++) {
       uint * locus;
       int nloc = getloci(sid[i], index, llist, &locus);

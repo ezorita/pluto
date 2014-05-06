@@ -31,8 +31,8 @@ plutoindex: $(INDEX_DEPS)
 plutoquery: $(QUERY_DEPS)
 	$(CC) $(CFLAGS) $(QUERY_SRC) $(QUERY_OBJ) $(LDLIBS) $(INCLUDES) -o $(BIN_DIR)/$@
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
-	$(CC) $(CFLAGS) $(INCLUDES) -c $^ -o $@
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(SRC_DIR)/%.h
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
 	rm -f $(wildcard $(OBJ_DIR)/*) $(BIN_DIR)/plutoindex
