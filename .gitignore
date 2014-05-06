@@ -1,5 +1,7 @@
 genomes/*
 obj/*
 test/*
-parsing/*
+tools/*
 plutoindex
+plutoquery
+*.txt
