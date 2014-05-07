@@ -89,28 +89,27 @@ idtoseq
    return seq;
 }
 
-
 uint
 getloci
 (
- uint seq_id,
- uint * index,
- uint * genome_loci,
+ uint    seq_id,
+ uint  * lut,
+ uint  * index,
  uint ** list
 )
 // SYNOPSIS:                                                              
-//   Given a genome index and its loci list, generates the list of loci
+//   Given a genome LUT and its index, retrieves the address of the loci list
 //   that correspond to the specified sequence id.
 //                                                                        
 // PARAMETERS:                                                            
-//   seq_id:      the node id containing the queried sequence.
-//   index:       an mmap pointer to an index file. (.pif)
-//   genome_loci: an mmap pointer to the genome loci file. (.plf)
-//   list:        pointer where the starting address of the list will be placed.
+//   seq_id: the node id containing the queried sequence.
+//   lut:    an mmaped pointer to the genome lookup table.
+//   index:  an mmaped pointer to the genome index file.
+//   list:   pointer where the starting address of the list will be placed.
 //                                                                        
 // RETURN:                                                                
 //   Returns the size of the list if any match has been found for the specified
-//   sequence and 0 otherwise.
+//   sequence or 0 otherwise.
 //   'list' will contain either the address of the first element in the list or 
 //   NULL if the sequence does not match any existing loci.
 //                                                                        
@@ -121,12 +120,12 @@ getloci
    // Clear height bits, just in case.
    seq_id &= SEQMASK;
 
-   // Get the number of loci in the genome. (Stored at genome_loci[0]).
-   uint nloci = genome_loci[0];
+   // Get the number of loci in the genome. (Stored at index[0]).
+   uint nloci = index[0];
    
 
    // Get the address offset of the 1st locus.
-   uint start = index[seq_id];
+   uint start = lut[seq_id];
    if (start == 0) {
       *list = NULL;
       return 0;
@@ -136,17 +135,66 @@ getloci
    uint end = 0;
    seq_id++;
    while (seq_id < NSEQ)
-      if (index[seq_id] != 0) break;
+      if (lut[seq_id] != 0) break;
       else seq_id++;
 
-   if (seq_id < NSEQ) end = index[seq_id];
+   if (seq_id < NSEQ) end = lut[seq_id];
    else               end = nloci;
 
    // Point to the beginning of the list and return the list size.
-   *list = genome_loci + start;
+   *list = index + start;
    return end - start;
 }
 
+uint
+addloci
+(
+ uint        seq_id,
+ uint      * lut,
+ uint      * index,
+ ustack_t ** ustackp
+)
+// SYNOPSIS:                                                              
+//   Same as getloci, but directly appends the content of the loci list to a
+//   stack of uints, instead of returning the address of the list.
+//                                                                        
+// PARAMETERS:                                                            
+//   seq_id: the node id containing the queried sequence.
+//   lut:    an mmaped pointer to the genome lookup table.
+//   index:  an mmaped pointer to the genome index file.
+//   ustack: uint stack where the loci will be appended.
+//                                                                        
+// RETURN:                                                                
+//   The number of inserted loci.
+//                                                                        
+// SIDE EFFECTS:                                                          
+//   May realloc the stack.
+//   
+{
+   ustack_t * ustack = *ustackp;
+   // Get the loci list.
+   uint * list;
+   uint   nloc = getloci(seqid, lut, index, &list);
+   if (nloc == 0) return 0;
+
+   // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
+   
+   // Realloc the stack if necessary.
+   if (ustack->pos + nloc > ustack->lim) {
+      uint newsize = ustack->pos + nloc;
+      ustack_t * p = realloc(ustack, (newsize+2) * sizeof(uint));
+      if (p == NULL) {
+         fprintf(stderr, "error extending ustack (realloc): %s\n", strerror(errno));
+         exit(EXIT_FAILURE);
+      }
+      *ustackp = ustack = p;
+      ustack->lim = newsize;
+   }
+   
+   // Copy data and update index.
+   memcpy(ustack->u + ustack->pos, list, nloc*sizeof(uint));
+   ustack->pos += nloc;
+}
 
 uint
 nodeaddr

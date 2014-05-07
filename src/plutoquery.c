@@ -46,24 +46,19 @@ int main(int argc, char * argv[]) {
    char * seq = argv[1];
    char * indexfile = argv[2];
 
-   char * locifile = malloc(strlen(indexfile) + 1);
-   strcpy(locifile, indexfile);
-   locifile[strlen(locifile)-2] = 'l';
-   int fdi = open(indexfile,O_RDONLY);
-   int fdl = open(locifile,O_RDONLY);
+   // Open index file.
+   int fd = open(indexfile,O_RDONLY);
 
-   // Get file sizes.
-   unsigned long isize = lseek(fdi, 0, SEEK_END);
-   unsigned long lsize = lseek(fdl, 0, SEEK_END);
-   lseek(fdi, 0, SEEK_SET);
-   lseek(fdl, 0, SEEK_SET);
+   // Get file size.
+   unsigned long isize = lseek(fd, 0, SEEK_END);
+   lseek(fd, 0, SEEK_SET);
    
-   // Map index and loci list to memory.
-   uint *index = (uint *) mmap(NULL, isize, PROT_READ, MAP_SHARED, fdi, 0);
-   uint *llist = (uint *) mmap(NULL, lsize, PROT_READ, MAP_SHARED, fdl, 0);
+   // Map LUT and index to memory.
+   uint *lut = (uint *) mmap(NULL, isize, PROT_READ, MAP_SHARED, fd, 0);
+   uint *index = lut + NSEQ;
    
-   if (index == MAP_FAILED || llist == MAP_FAILED) {
-      fprintf(stderr, "error mmaping index: %s\n", strerror(errno));
+   if (lut == MAP_FAILED) {
+      fprintf(stderr, "error loading index (mmap): %s\n", strerror(errno));
       exit(1);
    }
    // Compute sequence IDs.
@@ -73,7 +68,7 @@ int main(int argc, char * argv[]) {
    // For each sequence:
    for (int i=0; i<nids; i++) {
       uint * locus;
-      int nloc = getloci(sid[i], index, llist, &locus);
+      int nloc = getloci(sid[i], lut, index, &locus);
       char * nseq = idtoseq(sid[i]);
       fprintf(stdout, "%s (%#08x)\t%d results\n", nseq, sid[i], nloc);
       free(nseq);
@@ -84,8 +79,7 @@ int main(int argc, char * argv[]) {
    }
 
    // Unmap and close files.
-   munmap(index, isize);
-   munmap(llist, lsize);
-   close(fdi);
-   close(fdl);
+   munmap(lut, isize);
+   close(fd);
 }
+

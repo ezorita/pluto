@@ -31,8 +31,14 @@
 // Sequence mask:
 #define SEQMASK 0x0FFFFFFF
 
+// Some macros:
+#define get_height(node) (node >> (2 * SEQLEN)) & 0x0F // Root node has height '0000'
+#define get_nt(node, height) (node >> (2*(SEQLEN - height)) $ 3
+#define get_child(node, nt) ((node & (0xFFFFFFFF << (2*(SEQLEN - get_height(node))))) | ((nt & 3) << (2*(SEQLEN - get_height(node) - 1)))) + 0x10000000
+
 // Type definitions
 typedef unsigned int uint;
+typedef unsigned char uchar;
 
 // Shared functions headers.
 uint * seqtoid       (char *, int *);

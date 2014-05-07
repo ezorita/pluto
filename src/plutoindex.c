@@ -118,9 +118,11 @@ main
    }
 
    // Write loci list and generate index.
-   outfile[strlen(outfile)-2] = 'l';
+   outfile[strlen(outfile)-2] = 'i';
    
    fd = open(outfile, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+   // Leave space for the Look-Up table.
+   lseek(fd, NSEQ*sizeof(int), SEEK_SET); 
    // First int will contain the total number of loci (Including nulls).
    wbytes = write(fd, &fd, sizeof(int));
 
@@ -132,7 +134,7 @@ main
       // Write loci list.
       int bytes = loclist[i]->pos * sizeof(int);
       wbytes = write(fd, &(loclist[i]->l[0]), bytes);
-      if (wbytes < loclist[i]->pos * sizeof(char))
+      if (wbytes < bytes)
          fprintf(stderr, "I/O error: loci list %d (commited %d bytes, %lu bytes written).\n", i, bytes, wbytes);
 
       // Increase memory offset.
@@ -140,25 +142,22 @@ main
    }
 
    // Write the size of the loci list at the first int.
-   lseek(fd, SEEK_SET, 0);
+   lseek(fd, NSEQ*sizeof(int), SEEK_SET);
    wbytes = write(fd, &idx, sizeof(int));
    if (wbytes < 1) {
       fprintf(stderr, "I/O error: loci list size (commited 4 bytes, %lu bytes written).\n", wbytes);
    }
 
-   close(fd);
-    
+   // Go back to the beginning of the file and write the LUT.
+   lseek(fd, 0, SEEK_SET);
 
-   // Write index.
-   outfile[strlen(outfile)-2] = 'i';
-   
-   fd = open(outfile, O_CREAT | O_WRONLY | O_TRUNC, 0644);
    wbytes = write(fd, index, NSEQ*sizeof(int));
    if (wbytes < NSEQ*sizeof(int))
       fprintf(stderr, "I/O error: index (commited %lu bytes, %lu bytes written).\n", NSEQ*sizeof(int), wbytes);
    close(fd);
 
    return 0;
+
 } 
 
 
@@ -204,7 +203,7 @@ procseqs
 
       // For all sequence ids...
       for (int j = 0; j < nids; j++) {
-         uint sid = seqids[j];
+         uint sid = seqids[j] & SEQMASK;
 
          // Insert nodes in the tree.
          for (int h = 0; h < SEQLEN; h++) {
