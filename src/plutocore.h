@@ -32,18 +32,44 @@
 #define SEQMASK 0x0FFFFFFF
 
 // Some macros:
-#define get_height(node) (node >> (2 * SEQLEN)) & 0x0F // Root node has height '0000'
-#define get_nt(node, height) (node >> (2*(SEQLEN - height)) $ 3
-#define get_child(node, nt) ((node & (0xFFFFFFFF << (2*(SEQLEN - get_height(node))))) | ((nt & 3) << (2*(SEQLEN - get_height(node) - 1)))) + 0x10000000
+// Returns the height of the node.
+#define get_height(node) ((node >> (2 * SEQLEN)) & 0x0F)
+// Returns the nucleotide of the sequence at the specified height.
+#define get_nt(node, height) ((node >> (2*(SEQLEN - height)) & 3)
+// Returns the nodeid of the 1st generation child of the given sequence.
+#define get_child(node, nt) (((node & (0xFFFFFFFF << (2*(SEQLEN - get_height(node))))) | ((nt & 3) << (2*(SEQLEN - get_height(node) - 1)))) + 0x10000000)
+// Returns the bottom node of the tree that matches the remaining nucleotides of the query.
+#define add_suffix(node,query) ((((node & ~(SEQMASK >> get_height(node))) | (query & (SEQMASK >> get_height(node)))) & SEQMASK) | 0xE0000000)
 
 // Type definitions
 typedef unsigned int uint;
 typedef unsigned char uchar;
+typedef struct ustack_t ustack_t;
+typedef struct cstack_t cstack_t;
+
+struct ustack_t {
+   uint lim;
+   uint pos;
+   uint u[];
+};
+
+struct cstack_t {
+   uint  lim;
+   uint  pos;
+   uchar c[];
+};
+
 
 // Shared functions headers.
-uint * seqtoid       (char *, int *);
-char * idtoseq       (uint);
-uint   nodeaddr      (uint);
-uint   getloci       (uint, uint *, uint *, uint **);
+uint      * seqtoid    (char *, uint *);
+char      * idtoseq    (uint);
+uint        nodeaddr   (uint);
+uint        getloci    (uint, uint *, uint *, uint **);
+ustack_t  * new_ustack (uint);
+cstack_t  * new_cstack (uint);
+ustack_t ** new_uarray (uint, uint);
+cstack_t ** new_carray (uint, uint);
+void        ustack_add (ustack_t **, uint);
+void        cstack_add (cstack_t **, uchar *, uint);
 
 #endif

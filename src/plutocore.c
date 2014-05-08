@@ -4,7 +4,7 @@ uint*
 seqtoid
 (
  char * seq,
- int  * nids
+ uint * nids
  )
 // SYNOPSIS:                                                              
 //   Generates the ID of the sequence pointed by seq. If the sequence
@@ -179,7 +179,7 @@ addloci
 
    // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
    
-   // Realloc the stack if necessary.
+   // Realloc the stack if needed.
    if (ustack->pos + nloc > ustack->lim) {
       uint newsize = ustack->pos + nloc;
       ustack_t * p = realloc(ustack, (newsize+2) * sizeof(uint));
@@ -216,3 +216,141 @@ nodeaddr
 {
    return (HOFFSET & (SEQMASK >> (2*(SEQLEN-((nodeid>>28) & 0x0000000F))))) + ((nodeid & SEQMASK) >> (2*(SEQLEN-((nodeid>>28) & 0x0000000F))));
 }
+
+
+ustack_t *
+new_ustack
+(
+  uint size
+)
+{
+   ustack_t * ustack = malloc((2 + size) * sizeof(uint));
+   if (ustack == NULL) {
+      fprintf(stderr, "error allocating ustack (malloc): %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+   }
+
+   ustack->pos = 0;
+   ustack->lim = size;
+
+   return ustack;
+}
+
+
+cstack_t *
+new_cstack
+(
+ uint size
+)
+{
+   cstack_t * cstack = malloc(2*sizeof(uint) + size*sizeof(uchar));
+   if (cstack == NULL) {
+      fprintf(stderr, "error allocating cstack (malloc): %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+   }
+
+   cstack->pos = 0;
+   cstack->lim = size;
+
+   return cstack;
+}
+
+
+cstack_t **
+new_carray
+(
+ uint arraysize,
+ uint stacksize
+ )
+{
+   cstack_t ** carray = malloc(arraysize*sizeof(cstack_t *));
+   if (carray == NULL) {
+      fprintf(stderr, "error allocating carray (malloc): %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+   }
+
+   for (int i = 0; i < arraysize; i++)
+      carray[i] = new_cstack(stacksize);
+
+   return carray;
+}
+
+
+ustack_t **
+new_uarray
+(
+ uint arraysize,
+ uint stacksize
+ )
+{
+   ustack_t ** uarray = malloc(arraysize*sizeof(ustack_t *));
+   if (uarray == NULL) {
+      fprintf(stderr, "error allocating carray (malloc): %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+   }
+
+   for (int i = 0; i < arraysize; i++)
+      uarray[i] = new_ustack(stacksize);
+
+   return uarray;
+}
+
+
+void
+ustack_add
+(
+ ustack_t ** ustackp,
+ uint        value
+)
+
+{
+   ustack_t * ustack = *ustackp;
+   
+   // Realloc the stack if needed.
+   if (ustack->pos => ustack->lim) {
+      uint newsize = 2 * ustack->lim;
+      ustack_t * p = realloc(ustack, (newsize+2) * sizeof(uint));
+      if (p == NULL) {
+         fprintf(stderr, "error extending ustack (realloc): %s\n", strerror(errno));
+         exit(EXIT_FAILURE);
+      }
+      *ustackp = ustack = p;
+      ustack->lim = newsize;
+   }
+   
+   // Add value.
+   ustack->u[ustack->pos++] = value;
+}
+
+void
+cstack_add
+(
+ ustack_t ** cstackp,
+ uchar     * cache,
+ uint        tau
+)
+
+{
+   ustack_t * cstack = *cstackp;
+   
+   // Realloc the stack if needed.
+   if (cstack->pos + 2*tau + 1 > cstack->lim) {
+      uint newsize = 2 * ustack->lim;
+      while (newsize < cstack->pos + 2*tau + 1)
+         newsize *= 2;
+
+      ustack_t * p = realloc(ustack, 2*sizeof(uint) + newsize*sizeof(uchar));
+      if (p == NULL) {
+         fprintf(stderr, "error extending cstack (realloc): %s\n", strerror(errno));
+         exit(EXIT_FAILURE);
+      }
+      *ustackp = ustack = p;
+      ustack->lim = newsize;
+   }
+   
+   // Add cache.
+   memcpy(ustack->u + ustack->pos, cache, 2*tau + 1);
+   ustack->pos += 2*tau + 1;
+}
+
+

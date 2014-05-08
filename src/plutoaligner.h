@@ -1,20 +1,6 @@
 #include "plutocore.h"
 
 typedef struct searcharg_t sarg_t;
-typedef struct ustack_t ustack_t;
-typedef struct cstack_t cstack_t;
-
-struct ustack_t {
-   uint lim;
-   uint pos;
-   uint u[];
-};
-
-struct cstack_t {
-   uint lim;
-   uint pos;
-   char c[];
-};
 
 struct searcharg_t {
    uint               tau;
@@ -28,3 +14,7 @@ struct searcharg_t {
    struct cstack_t ** cstack;
 };
 
+// Function headers;
+
+void _search        (uint, uchar *, sarg_t *);
+void save_milestone (uint, uint, uchar *, ustack_t **, cstack_t **);
