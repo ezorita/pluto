@@ -174,7 +174,7 @@ addloci
    ustack_t * ustack = *ustackp;
    // Get the loci list.
    uint * list;
-   uint   nloc = getloci(seqid, lut, index, &list);
+   uint   nloc = getloci(seq_id, lut, index, &list);
    if (nloc == 0) return 0;
 
    // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
@@ -194,6 +194,8 @@ addloci
    // Copy data and update index.
    memcpy(ustack->u + ustack->pos, list, nloc*sizeof(uint));
    ustack->pos += nloc;
+
+   return nloc;
 }
 
 uint
@@ -307,7 +309,7 @@ ustack_add
    ustack_t * ustack = *ustackp;
    
    // Realloc the stack if needed.
-   if (ustack->pos => ustack->lim) {
+   if (ustack->pos >= ustack->lim) {
       uint newsize = 2 * ustack->lim;
       ustack_t * p = realloc(ustack, (newsize+2) * sizeof(uint));
       if (p == NULL) {
@@ -325,32 +327,47 @@ ustack_add
 void
 cstack_add
 (
- ustack_t ** cstackp,
+ cstack_t ** cstackp,
  uchar     * cache,
  uint        tau
 )
 
 {
-   ustack_t * cstack = *cstackp;
+   cstack_t * cstack = *cstackp;
    
    // Realloc the stack if needed.
    if (cstack->pos + 2*tau + 1 > cstack->lim) {
-      uint newsize = 2 * ustack->lim;
+      uint newsize = 2 * cstack->lim;
       while (newsize < cstack->pos + 2*tau + 1)
          newsize *= 2;
 
-      ustack_t * p = realloc(ustack, 2*sizeof(uint) + newsize*sizeof(uchar));
+      cstack_t * p = realloc(cstack, 2*sizeof(uint) + newsize*sizeof(uchar));
       if (p == NULL) {
          fprintf(stderr, "error extending cstack (realloc): %s\n", strerror(errno));
          exit(EXIT_FAILURE);
       }
-      *ustackp = ustack = p;
-      ustack->lim = newsize;
+      *cstackp = cstack = p;
+      cstack->lim = newsize;
    }
    
    // Add cache.
-   memcpy(ustack->u + ustack->pos, cache, 2*tau + 1);
-   ustack->pos += 2*tau + 1;
+   memcpy(cstack->c + cstack->pos, cache, 2*tau + 1);
+   cstack->pos += 2*tau + 1;
 }
 
 
+uint
+get_prefixlen
+(
+ uint seqa,
+ uint seqb
+)
+
+{
+   uint len = SEQLEN;
+   seqa &= SEQMASK;
+   seqb &= SEQMASK;
+   while (((seqa >> 2*(SEQLEN - len)) != (seqb >> 2*(SEQLEN - len))) && len > 0) len--;
+   
+   return len;
+}

@@ -10,6 +10,10 @@ QUERY_SOURCES= plutoquery.c
 QUERY_HEADERS= plutocore.h
 QUERY_OBJECTS= plutocore.o
 
+ALIGN_SOURCES= plutoaligner.c
+ALIGN_HEADERS= plutoaligner.h plutocore.h
+ALIGN_OBJECTS= plutocore.o
+
 INDEX_OBJ= $(addprefix $(OBJ_DIR)/,$(INDEX_OBJECTS))
 INDEX_DEPS= $(addprefix $(SRC_DIR)/,$(INDEX_SOURCES) $(INDEX_HEADERS)) $(INDEX_OBJ)
 INDEX_SRC= $(addprefix $(SRC_DIR)/,$(INDEX_SOURCES))
@@ -18,12 +22,19 @@ QUERY_OBJ= $(addprefix $(OBJ_DIR)/,$(QUERY_OBJECTS))
 QUERY_DEPS= $(addprefix $(SRC_DIR)/,$(QUERY_SOURCES) $(QUERY_HEADERS)) $(QUERY_OBJ)
 QUERY_SRC= $(addprefix $(SRC_DIR)/,$(QUERY_SOURCES))
 
+ALIGN_OBJ= $(addprefix $(OBJ_DIR)/,$(ALIGN_OBJECTS))
+ALIGN_DEPS= $(addprefix $(SRC_DIR)/,$(ALIGN_SOURCES) $(ALIGN_HEADERS)) $(ALIGN_OBJ)
+ALIGN_SRC= $(addprefix $(SRC_DIR)/,$(ALIGN_SOURCES))
+
 INCLUDES= $(addprefix -I,$(SRC_DIR))
-CFLAGS= -std=c99 -Wall -g -O3
+CFLAGS= -std=c99 -Wall -g
 LDLIBS= -lm
 CC= gcc
 
-all: plutoindex plutoquery
+all: plutoindex plutoquery pluto
+
+pluto: $(ALIGN_DEPS)
+	$(CC) $(CFLAGS) $(ALIGN_SRC) $(ALIGN_OBJ) $(LDLIBS) $(INCLUDES) -o $(BIN_DIR)/$@
 
 plutoindex: $(INDEX_DEPS)
 	$(CC) $(CFLAGS) $(INDEX_SRC) $(INDEX_OBJ) $(LDLIBS) $(INCLUDES) -o $(BIN_DIR)/$@

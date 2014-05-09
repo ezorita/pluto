@@ -4,4 +4,5 @@ test/*
 tools/*
 plutoindex
 plutoquery
+pluto
 *.txt

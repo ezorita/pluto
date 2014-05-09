@@ -195,7 +195,7 @@ procseqs
    // Process seqs.
    for (int i = 0; i < nseqs; i++) {
       char * seq = chunk + i;
-      int    nids;
+      uint    nids;
       uint  * seqids = seqtoid(seq, &nids);
 
       // Continue if there are too many 'N'.

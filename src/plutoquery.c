@@ -10,8 +10,6 @@
 #include <execinfo.h>
 #include <signal.h>
 
-#define min(a,b) (a < b ? a : b)
-
 void SIGSEGV_handler(int sig) {
   void *array[10];
   size_t size;
@@ -62,7 +60,7 @@ int main(int argc, char * argv[]) {
       exit(1);
    }
    // Compute sequence IDs.
-   int nids;
+   uint nids;
    uint * sid = seqtoid(seq, &nids);
    
    // For each sequence:

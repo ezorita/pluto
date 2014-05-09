@@ -1,9 +1,15 @@
 #include "plutocore.h"
+#include <execinfo.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 
 typedef struct searcharg_t sarg_t;
 
 struct searcharg_t {
-   uint               tau;
+   int                tau;
    uint               trail;
    uint               query;
    uchar            * tree;
