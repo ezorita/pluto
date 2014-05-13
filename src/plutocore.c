@@ -367,7 +367,7 @@ get_prefixlen
    uint len = SEQLEN;
    seqa &= SEQMASK;
    seqb &= SEQMASK;
-   while (((seqa >> 2*(SEQLEN - len)) != (seqb >> 2*(SEQLEN - len))) && len > 0) len--;
+   while (((seqa >> 2*(SEQLEN - len))&3 != (seqb >> 2*(SEQLEN - len))&3) && len > 0) len--;
    
    return len;
 }

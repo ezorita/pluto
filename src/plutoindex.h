@@ -18,20 +18,17 @@ typedef struct llst_t  loclst_t;
 typedef struct chrstack_t chrstack_t;
 typedef struct chrom_t chrom_t;
 
-struct llst_t
-{
+struct llst_t {
    uint   pos;
    uint   l[];
 };
 
-struct chrom_t
-{
+struct chrom_t {
    uint   loc;
    char * name;
 };
 
-struct chrstack_t
-{
+struct chrstack_t {
           int       lim;
           int       pos;
    struct chrom_t * c[];
