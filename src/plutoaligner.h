@@ -9,18 +9,24 @@
 #define MAXTREEQUERY 4
 
 typedef struct searcharg_t sarg_t;
+typedef struct usnap_t     usnap_t;
+
+struct usnap_t {
+   uint   lastid;
+   uint   pos;
+   uint   lim;
+   uint * u[];
+};
 
 struct searcharg_t {
    int                tau;
    char               trail;
-   char               cstart;
-   char               cend;
    uint               query;
    uchar            * tree;
    uint             * lut;
    uint             * index;
    struct ustack_t ** hits;
-   struct ustack_t ** milestones;
+   struct usnap_t  ** milestones;
    struct cstack_t ** cstack;
 };
 

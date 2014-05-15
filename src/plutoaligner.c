@@ -83,7 +83,8 @@ main
    //    General formula : Nbins = 1 + maxtau*(maxtau + 2)
    ustack_t ** hits  = new_uarray(1 + tau*(tau + 2), 4);
 
-
+   // TODO:
+   // - Initialize milestones as usnap_t
    ustack_t ** miles = new_uarray((SEQLEN-1)*tau, 4);
    cstack_t ** cache = new_carray((SEQLEN-1)*tau, 4*(2*tau + 1));
 
@@ -121,7 +122,7 @@ main
 
    // Alignment snapshot:
    // - HITS:
-   //   After querying a tree, a snapshot of the hit stack will be saved in hits_snapshot.
+   //   After querying the tree, a snapshot of the hit stack will be saved in hits_snapshot.
    //   The sequence associated with the snapshot will be kept and used by future queries to
    //   see whether the snapshot can be reused.
    // - MILESTONES:
@@ -129,22 +130,15 @@ main
    //   milestones on a concrete stack (tau, height), the sequence id is saved at this same position on 
    //   'mile_last_sid'. These ids are later used by other sequences to see whether the milestones saved at
    //   a certain height can be reused.
-   char     * hits_last_seq[tau][MAXTREEQUERY];
-   ustack_t * hits_snapshot[tau][MAXTREEQUERY];
-   uint       mile_last_sid[tau][SEQLEN-1];
+   usnap_t * hits_snapshot[tau][MAXTREEQUERY];
    // TODO:
    // - Save sequence ref after adding a milestone at a certain height.
    // - Save the hits snapshot and seq after _search.
 
-   // Initialize snapshot stack:
-   for (int i=0; i < tau; i++) {
-      for (int j=0; j < MAXTREEQUERY; j++) {
+   // Initialize hits snapshot:
+   for (int i=0; i < tau; i++)
+      for (int j=0; j < MAXTREEQUERY; j++)
          hits_last_seq[i][j] = 0xF0000000; // non-null height is the empty flag.
-         hits_snapshot[i][j] = NULL;
-      }
-      for (int j=0; j < SEQLEN-1; j++)
-         mile_last_sid[i][j] = 0xF0000000; // non-null height is the empty flag.
-   }
 
    for (int i=0; i < nseqs; i++) { 
       // Query length and no. of times the tree will be queried.
@@ -153,9 +147,9 @@ main
       int  trail_miles, trail_trees; 
       // Alignment snapshot.
       // Make the snapshot based on the next sequence (which should be the closest one).
-      // - trail_miles: if prefix > SEQLEN there's no need to query the tree again,
+      // - trail_trees: if prefix > SEQLEN there's no need to query the tree again,
       //   reuse the hits of the last query.
-      // - trail_trees: resume the tree query from the milestones at this height.
+      // - trail_miles: resume the tree query from the milestones at this height.
       if (i < nseqs-1) {
          int prefix = 0;
          while (useq[i][prefix] == useq[i+1][prefix] && prefix < qlen) prefix++;
@@ -166,9 +160,6 @@ main
          trail_miles = 0;
       }
 
-      // TODO:
-      // - Copy the content of the hits stack if nexttstart > 0 after querying the nexttstart-th tree.
-      //   This will allow the next seq to recover the hits snapshot and continue the query.
       for (int a=0; a<=tau; a++) {
          arg.tau = a;
          arg.milestones = miles + (arg.tau-1)*(SEQLEN-1);
@@ -231,29 +222,35 @@ main
             else {
                // Start from the most favorable milestone snapshot.
                int hstart = 0;
-               for (int h = SEQLEN-2; h >= 0; h--) {
+               for (int h = SEQLEN-1; h > 0; h--) {
                   // Continue if snapshot is empty.
-                  if (mile_last_sid[arg.tau][h] & ~SEQMASK) continue; 
-                  if (get_prefixlen(arg.query, mile_last_sid[arg.tau][h]) >= h) {
+                  if (arg.milestones[h-1]->lastid & ~SEQMASK) continue; 
+                  if (get_prefixlen(arg.query, arg.milestones[h-1]->lastid) >= h) {
                      hstart = h;
                      break;
                   }
                }
 
+               // Clear the milestones that will be overwritten.
+               for (int h = trail_miles; h > hstart; h--) {
+                  arg.milestones[h-1]->pos    = 0;
+                  arg.milestones[h-1]->lastid = arg.query;
+               }
+
                // Start search.
-               if (start == 0) {
-                  arg.cstart = arg.tau;
-                  arg.cend   = -arg.tau;
+               if (hstart == 0) {
                   _search(0, cachep - arg.tau, &arg, t);
                }
                else {
                   for (int m=0; m < arg.milestones[hstart-1]->pos; m++) {
-                     arg.cstart = arg.tau;
-                     arg.cend   = -arg.tau;
                      _search(arg.milestones[hstart-1]->u[m], arg.cstack[hstart-1]->c + m*(2*arg.tau+1), &arg, t);
                   }
                }
             }
+            // TODO:
+            // - Copy the content of the hits stack if t < trail_trees.
+            //   This will allow the next seq to recover the hits snapshot and continue the query.
+
          }
 
          // So far we have a list of candidate loci (after the merging filter).
@@ -315,6 +312,13 @@ _search
    // Risk of overflow at depth lower than 'tau'.
    int maxa = min((depth-1), arg->tau);
 
+   // Remove the outer diagonals whose score > tau.
+   int ctop, cleft;
+   ctop = cleft = arg->tau;
+   
+   while (pcache[ctop]  > arg->tau) ctop--;
+   while (pcache[cleft] > arg->tau) cleft--;
+
    // Penalty for match/mismatch and insertion/deletion resepectively.
    unsigned char mmatch;
    unsigned char shift;
@@ -322,11 +326,14 @@ _search
    // Part of the cache that is shared between all the children.
    uchar cache[2*arg->tau + 3];
    uchar * common = &cache[0] + arg->tau + 1;
-   for (int i = -arg->tau - 1; i <=  arg->tau + 1; i++) common[i] = (i < 0 ? -i : i);;
+
+   // Fill outer diagonals with tau + 1
+   for (int i = -arg->tau - 1; i < -cleft; i++) common[i] = arg->tau + 1;
+   for (int i =  arg->tau + 1; i > ctop; i--)   common[i] = arg->tau + 1;
 
    // The branch of the L that is identical among all children
    // is computed separately. It will be copied later.
-   for (int a = maxa ; a > 0 ; a--) {
+   for (int a = min(maxa, ctop) ; a > max(0, -cleft-1) ; a--) {
       // Upper arm of the L (need the path).
       mmatch = pcache[a] + (get_nt(nodeid, depth - a) != get_nt(arg->query, depth));
       shift = min(pcache[a-1], common[a+1]) + 1;
@@ -340,18 +347,21 @@ _search
       if(arg->tree[nodeaddr(childid)] == 0) continue;
       
       // Horizontal part of the L.
-      for(int a = maxa; a > 0; a--) {
+      for(int a = min(maxa, cleft); a > max(0, -ctop-1); a--) {
          mmatch = pcache[-a] + (get_nt(nodeid, depth) != get_nt(arg->query, depth - a));
          shift  = min(pcache[1 - a], common[-a - 1]) + 1;
          common[-a] = min(mmatch, shift);
       }
 
-      // Center cell.
-      mmatch = pcache[0] + (i != get_nt(arg->query, depth));
-      shift  = min(common[1], common[-1]) + 1;
-      common[0] = min(mmatch, shift);
+      // Center cell if center diagonal is alive.
+      if (ctop >= 0 && cleft >= 0) {
+         mmatch = pcache[0] + (i != get_nt(arg->query, depth));
+         shift  = min(common[1], common[-1]) + 1;
+         common[0] = min(mmatch, shift);
+      }
 
-      // Stop searching if tau is exceeded.
+      // Stop searching if tau is exceeded at all alive diagonals.
+      // TODO: Only continue if all elements in the L are > tau.
       if (common[0] > arg->tau) continue;
 
       // Reached the height, it's a hit!
