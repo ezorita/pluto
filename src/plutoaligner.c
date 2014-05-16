@@ -361,23 +361,44 @@ _search
       }
 
       // Stop searching if tau is exceeded at all alive diagonals.
-      // TODO: Only continue if all elements in the L are > tau.
-      if (common[0] > arg->tau) continue;
+      int dels = 0;
+      for (int a = maxa; a >= -maxa; a--) {
+         if (common[a] > arg->tau) dels++;
+         else break;
+      }
+      if (dels == 2*maxa + 1) continue;
 
-      // Reached the height, it's a hit!
-      if (depth == SEQLEN && common[0] == arg->tau) {
-         addloci(childid, arg->lut, arg->index, &(arg->hits));
+      // Reached the height, check for hits.
+      if (depth == SEQLEN) {
+         // Store instertions and deletions in different bins.
+         
+         // Insertions:
+         for (int a = maxa; a > 0; a--)
+            if (common[a] == arg->tau) {
+               // Prune the tree and return all loci below this node.
+               uint tmpid = childid & (0xFFFFFFFF << 2*a);
+               for (int k = 0; k < (1 << 2*a); k++)
+                  if (arg->tree[nodeaddr(tmpid + k)])
+                     addloci(tmpid + k, arg->lut, arg->index, arg->hits + a);
+            }
+
+         // Deletions and diagonal.
+         for (int a = -maxa; a <= 0; a++)
+            if (common[a] == arg->tau)
+               addloci(childid, arg->lut, arg->index, arg->hits + a);
+
          continue;
       }
+
+      // TODO:
+      // - No more dashing? Or maybe dash if there is just a single survivor...?
+      // - How do you solve the problem of off-diagonal ending points?
 
       // Dash if trail is over and no more mismatches allowed.
       if ((common[0] == arg->tau) && (depth > arg->trail)) {
          uint matchid;
          // Go straight to the bottom of the tree.
          matchid = add_suffix(childid, arg->query);
-
-         if (matchid == 202752348)
-            fprintf(stderr, "debug\n");
 
          // Either check the tree if node=0 OR check if the entry in the LUT is 0.
          if (arg->lut[matchid & SEQMASK]) {
