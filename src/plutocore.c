@@ -355,6 +355,23 @@ cstack_add
    cstack->pos += 2*tau + 1;
 }
 
+void
+copy_ustack
+(
+ ustack_t ** dstp,
+ ustack_t ** srcp
+)
+{
+   ustack_t * src = *srcp;
+   ustack_t * dst;
+   
+   int dstsz = srcp->pos;
+   dst = *dstp = realloc(*dstp, (dstsz + 2) * sizeof(uint));
+
+   memcpy(dst->u, src->u, dstsz*sizeof(uint));
+   dst->lim = dst->pos = dstsz;
+}
+
 
 uint
 get_prefixlen

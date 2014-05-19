@@ -80,21 +80,31 @@ main
    // - Allocate a hit bin for each kind of hit.  (...2 ins, 1 ins, 0 ins/del, 1 del, 2 del...)
    // - For a given maxtau:
    //    Nbins = [tau=0] 1 + [tau = 1] (1 + 2) + ... + [tau = k] (1 + 2k) + ... + (1 + 2maxtau)
-   //    General formula : Nbins = 1 + maxtau*(maxtau + 2)
-   ustack_t ** hits  = new_uarray(1 + tau*(tau + 2), 4);
+   //    General formula : aggregated Nbins = 1 + maxtau*(maxtau + 2)
 
-   // TODO:
-   // - Initialize milestones as usnap_t
-   ustack_t ** miles = new_uarray((SEQLEN-1)*tau, 4);
-   cstack_t ** cache = new_carray((SEQLEN-1)*tau, 4*(2*tau + 1));
+   usnap_t * hits[MAXTREEQUERY];
+   for (int l = 0; l < MAXTREEQUERY; l++) {
+      hits[l] = (usnap_t *) malloc(tau*sizeof(usnap_t));
+      for (int a = 0; a < tau; a++) {
+         hits[l][a].ustack = new_uarray(2*a + 1, 4);
+         hits[l][a].ustack += a;         // Center hit bins.
+         hits[l][a].lastid = 0xF0000000; // Flag uninitialized.
+      }
+   }
 
-   // Compute sequence IDs.
-   uint nids;
-   uint * sid = seqtoid(seq, &nids);
+   // Only the last tree will be trailed, so there's no need to allocate one cache array for each tree.
+   cstack_t ** cache[tau];
+   usnap_t  *  miles[tau];
+   for (int a = 1; a < tau; a++) {
+      cache[a] = new_carray((SEQLEN-1), 4*(2*a + 1));
+      miles[a] = (usnap_t *) malloc((SEQLEN-1)*sizeof(usnap_t));
+      for (int h = 0; h < SEQLEN-1; h++) {
+         miles[a][h].ustack = new_uarray(1, 4);
+         miles[a][h].lastid = 0xF0000000;
+      }
+   }
 
-   // Algorithm vars.
-   uint start = 0;
-   int trail = 0;
+   // Algorithm args.
    struct searcharg_t arg = {
       .tau        = 0,
       .trail      = 0,
@@ -102,19 +112,17 @@ main
       .tree       = tree,
       .lut        = lut,
       .index      = index,
-      .hits       = hits,
+      .hits       = NULL,
       .milestones = NULL,
-      .cstack     = cache,
+      .cstack     = NULL,
    };
 
+
+   // Parent cache.
    uchar rootcache[2*tau + 1];
    uchar * cachep = &rootcache[0] + tau;
    for (int i = -tau; i <= tau; i++) cachep[i] = (i < 0 ? -i : i);
-
-   // DEBUG
-   fprintf(stderr, "common cache:");
-   for (int i = -tau; i <= tau; i++) fprintf(stderr, " %d", cachep[i]);
-   fprintf(stderr, "\n");
+   
 
    // TODO:
    // - Define 'nseqs' as the number of sorted input seqs.
@@ -130,15 +138,6 @@ main
    //   milestones on a concrete stack (tau, height), the sequence id is saved at this same position on 
    //   'mile_last_sid'. These ids are later used by other sequences to see whether the milestones saved at
    //   a certain height can be reused.
-   usnap_t * hits_snapshot[tau][MAXTREEQUERY];
-   // TODO:
-   // - Save sequence ref after adding a milestone at a certain height.
-   // - Save the hits snapshot and seq after _search.
-
-   // Initialize hits snapshot:
-   for (int i=0; i < tau; i++)
-      for (int j=0; j < MAXTREEQUERY; j++)
-         hits_last_seq[i][j] = 0xF0000000; // non-null height is the empty flag.
 
    for (int i=0; i < nseqs; i++) { 
       // Query length and no. of times the tree will be queried.
@@ -146,7 +145,7 @@ main
       int  ntrees  = qlen / SEQLEN;
       int  trail_miles, trail_trees; 
       // Alignment snapshot.
-      // Make the snapshot based on the next sequence (which should be the closest one).
+      // Make the snapshot based on the next sequence.
       // - trail_trees: if prefix > SEQLEN there's no need to query the tree again,
       //   reuse the hits of the last query.
       // - trail_miles: resume the tree query from the milestones at this height.
@@ -161,71 +160,64 @@ main
       }
 
       for (int a=0; a<=tau; a++) {
-         arg.tau = a;
-         arg.milestones = miles + (arg.tau-1)*(SEQLEN-1);
-
-         // Hits vector:
-         //  [tau = 0] [   tau = 1   ] [         tau = 2       ] ...
-         // idx  0      1     2    3    4    5     6    7    8   ...
-         //    (0ID)   (1D) (0ID) (1I) (2D) (1D) (0ID) (1I) (2I) ...
-         //
-         // - Expected bin indices for each tau in '_search':
-         //    index     -3    -2    -1    0     1     2     3
-         //  [tau = 0]                   (0ID)
-         //  [tau = 1]              (1D) (0ID) (1I)
-         //  [tau = 2]        (2D)  (1D) (0ID) (1I)  (2I)
-         //  [tau = 3]  (3D)  (2D)  (1D) (0ID) (1I)  (2I)  (3I)
-         //
-         // - Pointer passed to '_search' to match the expected indices:
-         //   p(tau) = hits + (tau+1)*tau
-         arg.hits = hits + (arg.tau+1)*arg.tau;
+         // Set args for the current distance.
+         arg.tau        = a;
+         arg.milestones = miles[a];
          
-         // Start from the most favorable tree snapshot.
-         int tstart = 0; 
-         for (int t = ntrees-1; t >= 0; t--) {
-            // Up to (t+1)*SEQLEN nucleotides must coincide to reuse the result.
-            if (strncmp(useq[i], hits_last_seq[arg.tau][t], (t+1)*SEQLEN) == 0) {
-               tstart = t + 1;
-               break;
-            }
-         }
-
-         // Restore the snapshot.
-         // TODO: memcopy hits snapshot to local hits.
-
          //******************************************************
          //***                   TREE QUERY                   ***
          //******************************************************
-         for (int t = tstart; t < ntrees; t++) {
+         for (int t = 0; t < min(ntrees, MAXTREEQUERY); t++) {
+            // Set args for current tree.
+            arg.hits = hits[t] + a;
+
             // Split the query in 14mers.
             uint  nids;
             uint *seqids = seqtoid(useq[i]+SEQLEN*t, &nids);
-            if (nids != 0) {
-               // TODO: Clean this piece of shit. Just make sure that this will never happen...
-               fprintf("error: BAD sequence.\n");
+            if (nids != 1) {
+               fprintf("error: BAD sequence: %s\n", useq[i]);
                break;
             }
             arg.query = seqids[0];
 
-            // Clear hits if this is the first tree query.
-            if (t == 0)
-               for (int l = -arg.tau; l <= arg.tau; l++)
-                  arg.hits[l]->pos = 0;
+            // Check for available snapshots of this query.
+            int snapshot = 0;
+            for (int k = 0; k < MAXTREEQUERY; k++) {
+               if (snapshot = (arg.query == hits[k][a].lastid)) {
+                  // Copy hit stack if necessary.
+                  if (k != t) {
+                     for (int l = -a; l <=a; l++)
+                        copy_ustack(hits[t][a].ustack + l, hits[k][a].ustack + l);
+                  }
+                  break;
+               }
+            }
+            
+            // No need to compute if snapshot is available.
+            if (snapshot) continue;
+
+
+            // ...SEARCH FUNCTION...
+
+            // Clear hits.
+            arg.hits->lastid = arg.query;
+            for (int l = -arg.tau; l <= arg.tau; l++)
+               arg.hits->ustack[l]->pos = 0;
 
             // Start the search.
             if (arg.tau == 0) {
                // Go straight to the bottom of the tree.
                // Either check the tree if node=0 OR check if the entry in the LUT is 0.
                if (arg.lut[arg.query & SEQMASK])
-                  addloci(arg.query, arg.lut, arg.index, &(arg.hits));
+                  addloci(arg.query, arg.lut, arg.index, arg.hits->ustack);
             }
             else {
                // Start from the most favorable milestone snapshot.
                int hstart = 0;
                for (int h = SEQLEN-1; h > 0; h--) {
                   // Continue if snapshot is empty.
-                  if (arg.milestones[h-1]->lastid & ~SEQMASK) continue; 
-                  if (get_prefixlen(arg.query, arg.milestones[h-1]->lastid) >= h) {
+                  if (arg.milestones[h-1].lastid & ~SEQMASK) continue; 
+                  if (get_prefixlen(arg.query, arg.milestones[h-1].lastid) >= h) {
                      hstart = h;
                      break;
                   }
@@ -233,8 +225,8 @@ main
 
                // Clear the milestones that will be overwritten.
                for (int h = trail_miles; h > hstart; h--) {
-                  arg.milestones[h-1]->pos    = 0;
-                  arg.milestones[h-1]->lastid = arg.query;
+                  arg.milestones[h-1].ustack[0]->pos = 0;
+                  arg.milestones[h-1].lastid      = arg.query & SEQMASK;
                }
 
                // Start search.
@@ -243,7 +235,7 @@ main
                }
                else {
                   for (int m=0; m < arg.milestones[hstart-1]->pos; m++) {
-                     _search(arg.milestones[hstart-1]->u[m], arg.cstack[hstart-1]->c + m*(2*arg.tau+1), &arg, t);
+                     _search(arg.milestones[hstart-1].ustack[0]->u[m], arg.cstack[hstart-1]->c + m*(2*arg.tau+1), &arg);
                   }
                }
             }
@@ -253,7 +245,7 @@ main
 
          }
 
-         // So far we have a list of candidate loci (after the merging filter).
+         // So far we have a list of candidate loci for each tree (BEFORE the merging filter).
          // The temptative distance of these loci is arg.tau, but this still needs
          // to be verified since we may have the following exceptions:
          // 1. Distance between loci is SEQLEN + k.
@@ -295,8 +287,7 @@ _search
 (
  uint     nodeid,
  uchar  * pcache,
- sarg_t * arg,
- int      zigzag
+ sarg_t * arg
 )
 // filter: whether to fill or to zig-zag-filter the hits stack.
 //         filter = 0 for the first 14mer, 1 for the next ones of the same query.
@@ -371,44 +362,30 @@ _search
       // Reached the height, check for hits.
       if (depth == SEQLEN) {
          // Store instertions and deletions in different bins.
-         
          // Insertions:
-         for (int a = maxa; a > 0; a--)
+         for (int a = maxa; a > 0; a--) {
             if (common[a] == arg->tau) {
                // Prune the tree and return all loci below this node.
                uint tmpid = childid & (0xFFFFFFFF << 2*a);
+               // TODO:
+               // - Profile: this func may be slow (too many reallocs inside..).
                for (int k = 0; k < (1 << 2*a); k++)
                   if (arg->tree[nodeaddr(tmpid + k)])
-                     addloci(tmpid + k, arg->lut, arg->index, arg->hits + a);
+                     addloci(tmpid + k, arg->lut, arg->index, arg->hits->ustack + a);
             }
+         }
 
          // Deletions and diagonal.
-         for (int a = -maxa; a <= 0; a++)
+         for (int a = -maxa; a <= 0; a++) {
             if (common[a] == arg->tau)
-               addloci(childid, arg->lut, arg->index, arg->hits + a);
+               addloci(childid, arg->lut, arg->index, arg->hits->ustack + a);
+         }
 
          continue;
       }
 
-      // TODO:
-      // - No more dashing? Or maybe dash if there is just a single survivor...?
-      // - How do you solve the problem of off-diagonal ending points?
-
-      // Dash if trail is over and no more mismatches allowed.
-      if ((common[0] == arg->tau) && (depth > arg->trail)) {
-         uint matchid;
-         // Go straight to the bottom of the tree.
-         matchid = add_suffix(childid, arg->query);
-
-         // Either check the tree if node=0 OR check if the entry in the LUT is 0.
-         if (arg->lut[matchid & SEQMASK]) {
-            addloci(matchid, arg->lut, arg->index, &(arg->hits));
-            continue;
-         }
-      }
-      
       // Cache node in milestones when trailing.
-      if (depth <= arg->trail) save_milestone(childid, arg->tau, common - arg->tau, arg->milestones, arg->cstack);
+      if (depth <= arg->trail) save_milestone(arg->query, childid, arg->tau, common - arg->tau, arg->milestones, arg->cstack);
 
       _search(childid, common - arg->tau, arg);
    }
@@ -417,17 +394,18 @@ _search
 void
 save_milestone
 (
+  uint        query,
   uint        nodeid,
   uint        tau,
   uchar     * cache,
-  ustack_t ** milestones,
+  usnap_t  ** milestones,
   cstack_t ** cachestack
 )
 // Uses tau, nodeid, depth (inferred from nodeid) and the cache to save the milestone.
 {
    uint       height = get_height(nodeid);
-   ustack_t * mstack = milestones[height];
-   cstack_t * cstack = cachestack[height];
+   ustack_t * mstack = milestones[height-1].ustack;
+   cstack_t * cstack = cachestack[height-1];
 
    // Check data alignment.
    if (mstack->pos != cstack->pos)
@@ -435,6 +413,9 @@ save_milestone
       mstack->pos = cstack->pos = min(mstack->pos, cstack->pos);
 
    // Save nodeid and cache.
-   ustack_add(milestones + height - 1, nodeid);
+   ustack_add(&(milestones[height-1].ustack), nodeid);
    cstack_add(cachestack + height - 1, cache, tau);
+
+   // Flag milestone snapshot.
+   milestones[height].lastid = query;
 }

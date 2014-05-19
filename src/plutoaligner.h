@@ -6,27 +6,25 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
-#define MAXTREEQUERY 4
+#define MAXTREEQUERY 2
 
 typedef struct searcharg_t sarg_t;
 typedef struct usnap_t     usnap_t;
 
 struct usnap_t {
-   uint   lastid;
-   uint   pos;
-   uint   lim;
-   uint * u[];
+          uint        lastid;
+   struct ustack_t ** ustack;
 };
 
 struct searcharg_t {
-   int                tau;
-   char               trail;
-   uint               query;
-   uchar            * tree;
-   uint             * lut;
-   uint             * index;
-   struct ustack_t ** hits;
-   struct usnap_t  ** milestones;
+          int         tau;
+          char        trail;
+          uint        query;
+          uchar     * tree;
+          uint      * lut;
+          uint      * index;
+   struct usnap_t   * hits;
+   struct usnap_t   * milestones;
    struct cstack_t ** cstack;
 };
 
