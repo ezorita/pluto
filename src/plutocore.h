@@ -33,6 +33,11 @@
 // Sequence mask:
 #define SEQMASK 0x0FFFFFFF
 
+// Config params.
+#define HITSTACK_SIZE 256
+#define MAX_CHUNKS    5
+#define MAX_QUERYLEN  100
+
 // Some macros:
 #define min(a,b) (a < b ? a : b)
 // Returns the height of the node.
@@ -45,27 +50,20 @@
 #define add_suffix(node,query) ((((node & ~(SEQMASK >> 2*get_height(node))) | (query & (SEQMASK >> 2*get_height(node)))) & SEQMASK) | 0xE0000000)
 
 // Type definitions
-typedef unsigned int uint;
-typedef unsigned char uchar;
-typedef struct ustack_t ustack_t;
-typedef struct cstack_t cstack_t;
+typedef unsigned int seq_t;
+typedef unsigned int loc_t;
+typedef struct lstack_t lstack_t;
 
-struct ustack_t {
-   uint lim;
-   uint pos;
-   uint u[];
+struct lstack_t {
+   int   lim;
+   int   pos;
+   loc_t u[];
 };
-
-struct cstack_t {
-   uint  lim;
-   uint  pos;
-   uchar c[];
-};
-
 
 // Shared functions headers.
-uint      * seqtoid       (char *, uint *);
-char      * idtoseq       (uint);
+seq_t       seqtoid       (char *, int);
+seq_t     * seqtoid_N     (char *, uint *, int);
+char      * idtoseq       (uint, int);
 uint        nodeaddr      (uint);
 uint        getloci       (uint, uint *, uint *, uint **);
 uint        addloci       (uint, uint *, uint *, ustack_t **);
@@ -75,6 +73,6 @@ ustack_t ** new_uarray    (uint, uint);
 cstack_t ** new_carray    (uint, uint);
 void        ustack_add    (ustack_t **, uint);
 void        cstack_add    (cstack_t **, uchar *, uint);
-uint        get_prefixlen (uint seqa, uint seqb);
+uint        get_prefixlen (uint, uint, int);
 
 #endif

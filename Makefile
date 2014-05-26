@@ -10,8 +10,8 @@ QUERY_SOURCES= plutoquery.c
 QUERY_HEADERS= plutocore.h
 QUERY_OBJECTS= plutocore.o
 
-ALIGN_SOURCES= plutoaligner.c
-ALIGN_HEADERS= plutoaligner.h plutocore.h
+ALIGN_SOURCES= plutoaligner.c mergesort.c sma.c
+ALIGN_HEADERS= plutoaligner.h plutocore.h sma.h
 ALIGN_OBJECTS= plutocore.o
 
 INDEX_OBJ= $(addprefix $(OBJ_DIR)/,$(INDEX_OBJECTS))

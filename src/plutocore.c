@@ -1,10 +1,30 @@
 #include "plutocore.h"
 
-uint*
+seq_t
 seqtoid
 (
  char * seq,
- uint * nids
+ int   slen
+)
+{
+   seq_t seqid = 0;
+   for (int j = 0; j < slen ; j++) {
+      if (seq[j] == 'C' || seq[j] == 'c') seqid += 1;
+      else if (seq[j] == 'G' || seq[j] == 'g') seqid += 2;
+      else if (seq[j] == 'T' || seq[j] == 't') seqid += 3;
+      else return BAD_SEQ;
+      seqid <<= 2;
+   }
+
+   return seqid;   
+}
+
+seq_t*
+seqtoid_N
+(
+ char * seq,
+ int  * nids,
+ int    slen
  )
 // SYNOPSIS:                                                              
 //   Generates the ID of the sequence pointed by seq. If the sequence
@@ -27,7 +47,7 @@ seqtoid
    char nunkn = 0;
 
    // Count number of unknowns.
-   for (int j = 0; j < SEQLEN; j++)
+   for (int j = 0; j < slen; j++)
       nunkn += (seq[j] == 'N' || seq[j] == 'n');
 
    // Return NULL if max amount of 'N' has been reached.
@@ -35,11 +55,11 @@ seqtoid
       
    // Initialize seq ids.
    int nseqs = 1 << (2*nunkn);
-   uint * seqid = (uint *) malloc(nseqs * sizeof(uint));
+   seq_t * seqid = (seq_t *) malloc(nseqs * sizeof(seq_t));
    for (int k = 0; k < nseqs; k++) seqid[k] = 0;
 
    // Generate sequence ids.
-   for (int j = 0, u = nseqs/4; j < SEQLEN ; j++) {
+   for (int j = 0, u = nseqs/4; j < slen ; j++) {
       switch(seq[j]) {
       case 'C':
          for (int k = 0; k < nseqs; k++) seqid[k] += 1;
@@ -55,7 +75,7 @@ seqtoid
          u /= 4;
          break;
       }
-      if (j < SEQLEN - 1)
+      if (j < slen - 1)
          for (int k = 0; k < nseqs; k++) seqid[k] <<= 2;
    }
 
@@ -66,7 +86,8 @@ seqtoid
 char*
 idtoseq
 (
-  uint seqid
+ seq_t seqid,
+ int  slen
 )
 // SYNOPSIS:                                                              
 //   Reverts the sequence associated with the given ID.
@@ -82,20 +103,20 @@ idtoseq
 //   
 {
    char bases[4] = {'A','C','G','T'};
-   char * seq = malloc(SEQLEN+1);
-   for (int i= 0; i<SEQLEN; i++)
-      seq[SEQLEN-1-i] = bases[(seqid >> 2*i) & 3];
+   char * seq = malloc(slen+1);
+   for (int i= 0; i<slen; i++)
+      seq[slen-1-i] = bases[(seqid >> 2*i) & 3];
 
    return seq;
 }
 
-uint
+loc_t
 getloci
 (
- uint    seq_id,
- uint  * lut,
- uint  * index,
- uint ** list
+ seq_t    seq_id,
+ loc_t  * lut,
+ loc_t  * index,
+ loc_t ** list
 )
 // SYNOPSIS:                                                              
 //   Given a genome LUT and its index, retrieves the address of the loci list
@@ -121,18 +142,18 @@ getloci
    seq_id &= SEQMASK;
 
    // Get the number of loci in the genome. (Stored at index[0]).
-   uint nloci = index[0];
+   loc_t nloci = index[0];
    
 
    // Get the address offset of the 1st locus.
-   uint start = lut[seq_id];
+   loc_t start = lut[seq_id];
    if (start == 0) {
       *list = NULL;
       return 0;
    }
 
    // Find the next node to infer the offset.
-   uint end = 0;
+   loc_t end = 0;
    seq_id++;
    while (seq_id < NSEQ)
       if (lut[seq_id] != 0) break;
@@ -146,13 +167,13 @@ getloci
    return end - start;
 }
 
-uint
+loc_t
 addloci
 (
- uint        seq_id,
- uint      * lut,
- uint      * index,
- ustack_t ** ustackp
+ seq_t       seq_id,
+ loc_t     * lut,
+ loc_t     * index,
+ lstack_t ** ustackp
 )
 // SYNOPSIS:                                                              
 //   Same as getloci, but directly appends the content of the loci list to a
@@ -173,16 +194,16 @@ addloci
 {
    ustack_t * ustack = *ustackp;
    // Get the loci list.
-   uint * list;
-   uint   nloc = getloci(seq_id, lut, index, &list);
+   loc_t * list;
+   loc_t   nloc = getloci(seq_id, lut, index, &list);
    if (nloc == 0) return 0;
 
    // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
    
    // Realloc the stack if needed.
    if (ustack->pos + nloc > ustack->lim) {
-      uint newsize = ustack->pos + nloc;
-      ustack_t * p = realloc(ustack, (newsize+2) * sizeof(uint));
+      loc_t newsize = ustack->pos + nloc;
+      ustack_t * p = realloc(ustack, (newsize+2) * sizeof(loc_t));
       if (p == NULL) {
          fprintf(stderr, "error extending ustack (realloc): %s\n", strerror(errno));
          exit(EXIT_FAILURE);
@@ -192,41 +213,21 @@ addloci
    }
    
    // Copy data and update index.
-   memcpy(ustack->u + ustack->pos, list, nloc*sizeof(uint));
+   memcpy(ustack->u + ustack->pos, list, nloc*sizeof(loc_t));
    ustack->pos += nloc;
 
    return nloc;
 }
 
-uint
-nodeaddr
-(
-  uint nodeid
-)
-// SYNOPSIS:                                                              
-//   Computes the address offset in the tree of the sequence for a given node id.
-//                                                                        
-// PARAMETERS:                                                            
-//   nodeid: the node id.
-//                                                                        
-// RETURN:                                                                
-//   Address offset of the given node in the tree.
-//                                                                        
-// SIDE EFFECTS:                                                          
-//   None.
-//   
-{
-   return (HOFFSET & (SEQMASK >> (2*(SEQLEN-((nodeid>>28) & 0x0000000F))))) + ((nodeid & SEQMASK) >> (2*(SEQLEN-((nodeid>>28) & 0x0000000F))));
-}
 
 
-ustack_t *
-new_ustack
+lstack_t *
+new_lstack
 (
-  uint size
+  int size
 )
 {
-   ustack_t * ustack = malloc((2 + size) * sizeof(uint));
+   lstack_t * ustack = malloc(2*sizeof(int) + size*sizeof(loc_t));
    if (ustack == NULL) {
       fprintf(stderr, "error allocating ustack (malloc): %s\n", strerror(errno));
       exit(EXIT_FAILURE);
@@ -239,152 +240,66 @@ new_ustack
 }
 
 
-cstack_t *
-new_cstack
-(
- uint size
-)
-{
-   cstack_t * cstack = malloc(2*sizeof(uint) + size*sizeof(uchar));
-   if (cstack == NULL) {
-      fprintf(stderr, "error allocating cstack (malloc): %s\n", strerror(errno));
-      exit(EXIT_FAILURE);
-   }
-
-   cstack->pos = 0;
-   cstack->lim = size;
-
-   return cstack;
-}
-
-
-cstack_t **
-new_carray
-(
- uint arraysize,
- uint stacksize
- )
-{
-   cstack_t ** carray = malloc(arraysize*sizeof(cstack_t *));
-   if (carray == NULL) {
-      fprintf(stderr, "error allocating carray (malloc): %s\n", strerror(errno));
-      exit(EXIT_FAILURE);
-   }
-
-   for (int i = 0; i < arraysize; i++)
-      carray[i] = new_cstack(stacksize);
-
-   return carray;
-}
-
-
-ustack_t **
-new_uarray
-(
- uint arraysize,
- uint stacksize
- )
-{
-   ustack_t ** uarray = malloc(arraysize*sizeof(ustack_t *));
-   if (uarray == NULL) {
-      fprintf(stderr, "error allocating carray (malloc): %s\n", strerror(errno));
-      exit(EXIT_FAILURE);
-   }
-
-   for (int i = 0; i < arraysize; i++)
-      uarray[i] = new_ustack(stacksize);
-
-   return uarray;
-}
-
 
 void
-ustack_add
+lstack_add
 (
- ustack_t ** ustackp,
- uint        value
+ lstack_t ** lstackp,
+ loc_t       value
 )
 
 {
-   ustack_t * ustack = *ustackp;
+   lstack_t * lstack = *lstackp;
    
    // Realloc the stack if needed.
-   if (ustack->pos >= ustack->lim) {
-      uint newsize = 2 * ustack->lim;
-      ustack_t * p = realloc(ustack, (newsize+2) * sizeof(uint));
+   if (lstack->pos >= lstack->lim) {
+      uint newsize = 2 * lstack->lim;
+      lstack_t * p = realloc(lstack, (newsize+2) * sizeof(uint));
       if (p == NULL) {
-         fprintf(stderr, "error extending ustack (realloc): %s\n", strerror(errno));
+         fprintf(stderr, "error extending lstack (realloc): %s\n", strerror(errno));
          exit(EXIT_FAILURE);
       }
-      *ustackp = ustack = p;
-      ustack->lim = newsize;
+      *lstackp = lstack = p;
+      lstack->lim = newsize;
    }
    
    // Add value.
-   ustack->u[ustack->pos++] = value;
+   lstack->u[lstack->pos++] = value;
 }
 
 void
-cstack_add
+copy_lstack
 (
- cstack_t ** cstackp,
- uchar     * cache,
- uint        tau
-)
-
-{
-   cstack_t * cstack = *cstackp;
-   
-   // Realloc the stack if needed.
-   if (cstack->pos + 2*tau + 1 > cstack->lim) {
-      uint newsize = 2 * cstack->lim;
-      while (newsize < cstack->pos + 2*tau + 1)
-         newsize *= 2;
-
-      cstack_t * p = realloc(cstack, 2*sizeof(uint) + newsize*sizeof(uchar));
-      if (p == NULL) {
-         fprintf(stderr, "error extending cstack (realloc): %s\n", strerror(errno));
-         exit(EXIT_FAILURE);
-      }
-      *cstackp = cstack = p;
-      cstack->lim = newsize;
-   }
-   
-   // Add cache.
-   memcpy(cstack->c + cstack->pos, cache, 2*tau + 1);
-   cstack->pos += 2*tau + 1;
-}
-
-void
-copy_ustack
-(
- ustack_t ** dstp,
- ustack_t ** srcp
+ lstack_t ** dstp,
+ lstack_t ** srcp
 )
 {
-   ustack_t * src = *srcp;
-   ustack_t * dst;
+   lstack_t * src = *srcp;
+   lstack_t * dst;
    
-   int dstsz = srcp->pos;
-   dst = *dstp = realloc(*dstp, (dstsz + 2) * sizeof(uint));
+   size_t dstsz = src->pos*sizeof(loc_t) + 2*sizeof(int);
+   dst = *dstp = realloc(*dstp, dstsz);
 
-   memcpy(dst->u, src->u, dstsz*sizeof(uint));
-   dst->lim = dst->pos = dstsz;
+   memcpy(dst, src, dstsz);
+   dst->lim = src->pos;
 }
 
 
-uint
+int
 get_prefixlen
 (
- uint seqa,
- uint seqb
+ seq_t seqa,
+ seq_t seqb,
+ int  slen
 )
 
 {
-   uint len = SEQLEN;
+   int len = slen;
+   // TODO:
+   // - Seqmask depends on slen. (Maybe a macro SEQMASK(slen))
    seqa &= SEQMASK;
    seqb &= SEQMASK;
-   while (((seqa >> 2*(SEQLEN - len))&3 != (seqb >> 2*(SEQLEN - len))&3) && len > 0) len--;
+   while (((seqa >> 2*(slen - len))&3 != (seqb >> 2*(slen - len))&3) && len > 0) len--;
    
    return len;
 }
