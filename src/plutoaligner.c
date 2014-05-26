@@ -70,10 +70,9 @@ main
          mstack[c][i] = malloc(3*sizeof(seq_t) + ssize*sizeof(mismatch_t));
          mstack[c][i]->lim = ssize;
          mstack[c][i]->pos = 0;
-         mstack[c][i]->seq = 0xFFFFFFFF;
+         mstack[c][i]->seq = BAD_SEQ;
       }
    }
-
 
    // Loci bins:
    // - Allocate a loci bin for each kind of mismatch.  (...2 ins, 1 ins, 0 ins/del, 1 del, 2 del...)
@@ -87,7 +86,6 @@ main
       for (int i = 0; i < nstacks; i++) lstack[c][i] = new_lstack(HITSTACK_SIZE);
    }
 
-
    // Read file:
    uint    num_query;
    char ** all_query = read_file(queryfile, &num_query);
@@ -95,6 +93,8 @@ main
 
    // Align sequences.
    seq_t chunk[MAX_CHUNKS];
+   char noextras[tau];
+   for (int n = 0; n < tau; n++) noextras[tau] = -1;
    for (int q = 0; q < num_query; q++) {
       if (all_query[q] == NULL) continue;
 
@@ -107,14 +107,17 @@ main
 
       for (int c = 0; c < nchunks; c++) {
          repeat[c] = 0;
-         seqid[c]  = seqtoid(query, SEQLEN);
+         seqid[c]  = seqtoid(query + c*SEQLEN, SEQLEN);
       }
       
-      int match = 0;
+      int match = 0, t = 0;
       while (match == 0) {
          // Get the Loci list.
          for (int c = 0; c < nchunks; c++) {
-            
+            lstack_t * locstack = lstack[c] + (1+t*(t+1));
+            seq_t seq = seqid[c];
+            sma(mstack[c], seq, SEQLEN, (c < nchunks - 1 ? query + (c+1)*SEQLEN : noextras), t);
+            lookup(t, mstack[c][t], lut, index, locstack);
          }
       }
       

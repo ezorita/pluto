@@ -114,6 +114,7 @@ loc_t
 getloci
 (
  seq_t    seq_id,
+ loc_t    nloci,
  loc_t  * lut,
  loc_t  * index,
  loc_t ** list
@@ -124,6 +125,7 @@ getloci
 //                                                                        
 // PARAMETERS:                                                            
 //   seq_id: the node id containing the queried sequence.
+//   nloci:  size of the index. Can be read at index[0].
 //   lut:    an mmaped pointer to the genome lookup table.
 //   index:  an mmaped pointer to the genome index file.
 //   list:   pointer where the starting address of the list will be placed.
@@ -138,13 +140,6 @@ getloci
 //   None.
 //   
 {
-   // Clear height bits, just in case.
-   seq_id &= SEQMASK;
-
-   // Get the number of loci in the genome. (Stored at index[0]).
-   loc_t nloci = index[0];
-   
-
    // Get the address offset of the 1st locus.
    loc_t start = lut[seq_id];
    if (start == 0) {
@@ -173,7 +168,7 @@ addloci
  seq_t       seq_id,
  loc_t     * lut,
  loc_t     * index,
- lstack_t ** ustackp
+ lstack_t ** lstackp
 )
 // SYNOPSIS:                                                              
 //   Same as getloci, but directly appends the content of the loci list to a
@@ -183,7 +178,7 @@ addloci
 //   seq_id: the node id containing the queried sequence.
 //   lut:    an mmaped pointer to the genome lookup table.
 //   index:  an mmaped pointer to the genome index file.
-//   ustack: uint stack where the loci will be appended.
+//   lstack: uint stack where the loci will be appended.
 //                                                                        
 // RETURN:                                                                
 //   The number of inserted loci.
@@ -192,7 +187,7 @@ addloci
 //   May realloc the stack.
 //   
 {
-   ustack_t * ustack = *ustackp;
+   lstack_t * lstack = *lstackp;
    // Get the loci list.
    loc_t * list;
    loc_t   nloc = getloci(seq_id, lut, index, &list);
@@ -201,24 +196,78 @@ addloci
    // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
    
    // Realloc the stack if needed.
-   if (ustack->pos + nloc > ustack->lim) {
-      loc_t newsize = ustack->pos + nloc;
-      ustack_t * p = realloc(ustack, (newsize+2) * sizeof(loc_t));
+   if (lstack->pos + nloc > lstack->lim) {
+      loc_t newsize = lstack->pos + nloc;
+      lstack_t * p = realloc(lstack, (newsize+2) * sizeof(loc_t));
       if (p == NULL) {
-         fprintf(stderr, "error extending ustack (realloc): %s\n", strerror(errno));
+         fprintf(stderr, "error extending lstack (realloc): %s\n", strerror(errno));
          exit(EXIT_FAILURE);
       }
-      *ustackp = ustack = p;
-      ustack->lim = newsize;
+      *lstackp = lstack = p;
+      lstack->lim = newsize;
    }
    
    // Copy data and update index.
-   memcpy(ustack->u + ustack->pos, list, nloc*sizeof(loc_t));
-   ustack->pos += nloc;
+   memcpy(lstack->u + lstack->pos, list, nloc*sizeof(loc_t));
+   lstack->pos += nloc;
 
    return nloc;
 }
 
+
+loc_t
+lookup
+(
+ int         tau,
+ mstack_t  * mstack,
+ loc_t     * lut,
+ loc_t     * index,
+ lstack_t ** lstackp
+ )
+{
+   // Avoid recomputing the same thing.
+   if (mstack->seq == lstackp[0]->seq) return;
+   
+   // Reset loci stacks.
+   for (int t = -tau; t <= tau; t++) {
+      lstack[t]->pos = 0;
+      lstack[t]->seq = mstack->seq;
+   }
+
+   // Get the number of loci in the genome. (Stored at index[0]).
+   loc_t nloci = index[0];
+
+   loc_t total = 0;
+   for (int i = 0; i < mstack->pos; i++) {
+      // Get the loci list.
+      lstack_t * lstack = lstackp[mstack->m[i].offset];
+      loc_t * list;
+      loc_t   nloc = getloci(seq_id, nloci, lut, index, &list);
+      if (nloc == 0) continue;
+
+      // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
+   
+      // Realloc the stack if needed.
+      if (lstack->pos + nloc > lstack->lim) {
+         loc_t newsize = 2*lstack->lim;
+         while (newsize < lstack->pos + nloc) newsize *= 2;
+         lstack_t * p = realloc(lstack, 2*sizeof(int) + newsize*sizeof(loc_t));
+         if (p == NULL) {
+            fprintf(stderr, "error extending lstack (realloc): %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+         }
+         *lstackp = lstack = p;
+         lstack->lim = newsize;
+      }
+
+      // Copy data and update index.
+      memcpy(lstack->u + lstack->pos, list, nloc*sizeof(loc_t));
+      lstack->pos += nloc;
+      total       += nloc;
+   }
+
+   return total;
+}
 
 
 lstack_t *
@@ -235,6 +284,7 @@ new_lstack
 
    ustack->pos = 0;
    ustack->lim = size;
+   ustack->seq = BAD_SEQ;
 
    return ustack;
 }

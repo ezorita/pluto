@@ -33,6 +33,9 @@
 // Sequence mask:
 #define SEQMASK 0x0FFFFFFF
 
+// Define bad sequence.
+#define BAD_SEQ 0xFFFFFFFF
+
 // Config params.
 #define HITSTACK_SIZE 256
 #define MAX_CHUNKS    5
@@ -53,11 +56,26 @@
 typedef unsigned int seq_t;
 typedef unsigned int loc_t;
 typedef struct lstack_t lstack_t;
+typedef struct mismatch_t mismatch_t;
+typedef struct mstack_t mstack_t;
 
 struct lstack_t {
+   seq_t seq;
    int   lim;
    int   pos;
    loc_t u[];
+};
+
+struct mismatch_t {
+   char  offset;
+   seq_t seq;
+};
+
+struct mstack_t {
+   seq_t      seq;
+   int        pos;
+   int        lim;
+   mismatch_t m[];
 };
 
 // Shared functions headers.
