@@ -34,15 +34,25 @@
 #define SEQMASK 0x0FFFFFFF
 
 // Define bad sequence.
-#define BAD_SEQ 0xFFFFFFFF
+#define BAD_SEQ       0xFFFFFFFF
+#define MERGE_PENDING 0x7FFFFFFF
+#define MERGE_DONE    0x3FFFFFFF
+
+#define NODE_OPEN     0
+#define NODE_SET      1
+
+#define MERGE_EMPTY   -1
+#define MERGE_OK      0
 
 // Config params.
-#define HITSTACK_SIZE 256
-#define MAX_CHUNKS    5
-#define MAX_QUERYLEN  100
+#define LOCI_STACKSIZE 256
+#define MAX_CHUNKS     5
+#define MAX_QUERYLEN   100
 
 // Some macros:
 #define min(a,b) (a < b ? a : b)
+#define max(a,b) (a > b ? a : b)
+#define abs(a) (a < 0 ? -a : a)
 // Returns the height of the node.
 #define get_height(node) ((node >> (2 * SEQLEN)) & 0x0F)
 // Returns the nucleotide of the sequence at the specified height.
@@ -55,20 +65,43 @@
 // Type definitions
 typedef unsigned int seq_t;
 typedef unsigned int loc_t;
+typedef struct tnode_t tnode_t;
 typedef struct lstack_t lstack_t;
 typedef struct mismatch_t mismatch_t;
 typedef struct mstack_t mstack_t;
+typedef struct stackbuf_t stackbuf_t;
+
+struct tnode_t {
+   char               mintau;
+   char               leaf;
+   seq_t              status;
+   struct tnode_t   * lchild;
+   struct tnode_t   * rchild;
+   struct lstack_t ** data;
+};
+
+struct tree_t {
+   int              nnodes;
+   struct tnode_t * node;
+};
+
+
+struct stackbuf_t {
+   int                count;
+   struct lstack_t ** stack;
+};
 
 struct lstack_t {
    seq_t seq;
+   int   tau;
    int   lim;
    int   pos;
    loc_t u[];
 };
 
 struct mismatch_t {
-   char  offset;
    seq_t seq;
+   char  offset;
 };
 
 struct mstack_t {

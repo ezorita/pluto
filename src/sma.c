@@ -247,21 +247,3 @@ add_mismatch
 
    mstack->m[mstack->pos++] = mismatch;
 }
-
-
-int
-mcomp
-(
- const void * a,
- const void * b
- )
-{
-   mismatch_t * ma = (mismatch_t *) a;
-   mismatch_t * mb = (mismatch_t *) b;
-   if (ma->seq > mb->seq)
-      return 1;
-   else if (ma->seq < mb->seq)
-      return -1;
-   else
-      return 0;
-}

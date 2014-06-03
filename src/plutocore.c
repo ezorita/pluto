@@ -190,7 +190,7 @@ addloci
    lstack_t * lstack = *lstackp;
    // Get the loci list.
    loc_t * list;
-   loc_t   nloc = getloci(seq_id, lut, index, &list);
+   loc_t   nloc = getloci(seq_id, index[0], lut, index, &list);
    if (nloc == 0) return 0;
 
    // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
@@ -226,23 +226,20 @@ lookup
  )
 {
    // Avoid recomputing the same thing.
-   if (mstack->seq == lstackp[0]->seq) return;
+   if (mstack->seq == lstackp->seq) return;
    
-   // Reset loci stacks.
-   for (int t = -tau; t <= tau; t++) {
-      lstack[t]->pos = 0;
-      lstack[t]->seq = mstack->seq;
-   }
-
    // Get the number of loci in the genome. (Stored at index[0]).
    loc_t nloci = index[0];
+   lstack_t * lstack = *lstackp;
+
+   // Reset loci stack.
+   lstack->pos = 0;
 
    loc_t total = 0;
    for (int i = 0; i < mstack->pos; i++) {
       // Get the loci list.
-      lstack_t * lstack = lstackp[mstack->m[i].offset];
       loc_t * list;
-      loc_t   nloc = getloci(seq_id, nloci, lut, index, &list);
+      loc_t   nloc = getloci(mstack->m[i].seq, nloci, lut, index, &list);
       if (nloc == 0) continue;
 
       // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
@@ -264,7 +261,18 @@ lookup
       memcpy(lstack->u + lstack->pos, list, nloc*sizeof(loc_t));
       lstack->pos += nloc;
       total       += nloc;
+      
+      // Add offset now and forget about it! (Less painful option)
+      loc_t offset;
+      if ((offset = mstack->m[i].offset) != 0) {
+         for (int i = lstack->pos - nloc; i < lstack->pos; i++) {
+            lstack->u[i] += offset;
+         }
+      }
    }
+
+   // Sort loci.
+   qsort(lstack->u, lstack->pos, sizeof(loc_t), loccomp);
 
    return total;
 }
@@ -276,7 +284,7 @@ new_lstack
   int size
 )
 {
-   lstack_t * ustack = malloc(2*sizeof(int) + size*sizeof(loc_t));
+   lstack_t * ustack = malloc(sizeof(seq_t) + 3*sizeof(int) + newsize*sizeof(loc_t));
    if (ustack == NULL) {
       fprintf(stderr, "error allocating ustack (malloc): %s\n", strerror(errno));
       exit(EXIT_FAILURE);
@@ -285,6 +293,7 @@ new_lstack
    ustack->pos = 0;
    ustack->lim = size;
    ustack->seq = BAD_SEQ;
+   ustack->tau = 0;
 
    return ustack;
 }
@@ -304,9 +313,9 @@ lstack_add
    // Realloc the stack if needed.
    if (lstack->pos >= lstack->lim) {
       uint newsize = 2 * lstack->lim;
-      lstack_t * p = realloc(lstack, (newsize+2) * sizeof(uint));
+      lstack_t * p = realloc(lstack, sizeof(seq_t) + 3*sizeof(int) + newsize*sizeof(loc_t));
       if (p == NULL) {
-         fprintf(stderr, "error extending lstack (realloc): %s\n", strerror(errno));
+         fprintf(stderr, "error while extending lstack (lstack_add/realloc): %s\n", strerror(errno));
          exit(EXIT_FAILURE);
       }
       *lstackp = lstack = p;
@@ -327,11 +336,32 @@ copy_lstack
    lstack_t * src = *srcp;
    lstack_t * dst;
    
-   size_t dstsz = src->pos*sizeof(loc_t) + 2*sizeof(int);
+   size_t dstsz = src->pos*sizeof(loc_t) + 2*sizeof(int) + sizeof(seq_t);
    dst = *dstp = realloc(*dstp, dstsz);
 
    memcpy(dst, src, dstsz);
    dst->lim = src->pos;
+}
+
+void
+copy_mstack
+(
+ mstack_t ** dstp,
+ mstack_t ** srcp
+)
+{
+   mstack_t * src = *srcp;
+   mstack_t * dst;
+   
+   size_t dstsz = src->pos*sizeof(mismatch_t) + 2*sizeof(int) + sizeof(seq_t);
+   dst = *dstp = realloc(*dstp, dstsz);
+   if (dst == NULL) {
+      fprintf(stderr, "error while copying mstack (copy_mstack/realloc): %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+   }
+
+   memcpy(dst, src, dstsz);
+   dst->lim = src->lim;
 }
 
 
@@ -352,4 +382,37 @@ get_prefixlen
    while (((seqa >> 2*(slen - len))&3 != (seqb >> 2*(slen - len))&3) && len > 0) len--;
    
    return len;
+}
+
+int
+mcomp
+(
+ const void * a,
+ const void * b
+ )
+{
+   mismatch_t * ma = (mismatch_t *) a;
+   mismatch_t * mb = (mismatch_t *) b;
+   if (ma->seq > mb->seq)
+      return 1;
+   else if (ma->seq < mb->seq)
+      return -1;
+   else
+      return 0;
+}
+
+int
+loccomp
+(
+ const void * a,
+ const void * b
+)
+{
+   loc_t * la = (loc_t *) a;
+   loc_t * lb = (loc_t *) b;
+   if (la > lb)
+      return 1;
+   else if (la < lb)
+      return -1;
+   else return 0;
 }
