@@ -8,7 +8,17 @@
 
 #define MAXLUTQUERY 2
 
-// Function headers;
+// Data types:
+typedef struct arg_t arg_t;
 
+struct arg_t {
+   int     nleaves;
+   int     maxtau;
+   char  * query;
+   loc_t * lut;
+   loc_t * index;
+};
+
+// Function headers;
 void _search        (uint, uchar *, sarg_t *);
 void save_milestone (uint, uint, uchar *, ustack_t **, cstack_t **);

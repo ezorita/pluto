@@ -45,6 +45,7 @@ sma
       .mstack = mstack + tau
    };
    mstack[tau]->seq = seq;
+   mstack[tau]->tau = tau;
    sma_gen(seq, 0, tau, 0, params, 0);
 
    // Sort.

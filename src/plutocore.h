@@ -46,6 +46,7 @@
 
 // Config params.
 #define LOCI_STACKSIZE 256
+#define MISM_STACKSIZE 256
 #define MAX_CHUNKS     5
 #define MAX_QUERYLEN   100
 
@@ -78,6 +79,9 @@ struct tnode_t {
    struct tnode_t   * lchild;
    struct tnode_t   * rchild;
    struct lstack_t ** data;
+   // leaf only:
+   struct mstack_t ** mstack;
+   char             * extras;
 };
 
 struct tree_t {
@@ -86,9 +90,14 @@ struct tree_t {
 };
 
 
-struct stackbuf_t {
+struct lstackbuf_t {
    int                count;
    struct lstack_t ** stack;
+};
+
+struct mstackbuf_t {
+   int                count;
+   struct mstack_t ** stack;
 };
 
 struct lstack_t {
@@ -106,6 +115,7 @@ struct mismatch_t {
 
 struct mstack_t {
    seq_t      seq;
+   int        tau;
    int        pos;
    int        lim;
    mismatch_t m[];

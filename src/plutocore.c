@@ -223,17 +223,19 @@ lookup
  loc_t     * lut,
  loc_t     * index,
  lstack_t ** lstackp
- )
+)
 {
+   lstack_t * lstack = *lstackp;
+
    // Avoid recomputing the same thing.
-   if (mstack->seq == lstackp->seq) return;
+   if (mstack->seq == lstack->seq) return;
    
    // Get the number of loci in the genome. (Stored at index[0]).
    loc_t nloci = index[0];
-   lstack_t * lstack = *lstackp;
 
    // Reset loci stack.
    lstack->pos = 0;
+   lstack->tau = tau;
 
    loc_t total = 0;
    for (int i = 0; i < mstack->pos; i++) {
@@ -284,9 +286,9 @@ new_lstack
   int size
 )
 {
-   lstack_t * ustack = malloc(sizeof(seq_t) + 3*sizeof(int) + newsize*sizeof(loc_t));
+   lstack_t * ustack = malloc(sizeof(seq_t) + 3*sizeof(int) + size*sizeof(loc_t));
    if (ustack == NULL) {
-      fprintf(stderr, "error allocating ustack (malloc): %s\n", strerror(errno));
+      fprintf(stderr, "error allocating lstack_t in 'new_lstack' (malloc): %s\n", strerror(errno));
       exit(EXIT_FAILURE);
    }
 
@@ -298,6 +300,26 @@ new_lstack
    return ustack;
 }
 
+
+lstack_t *
+new_mstack
+(
+  int size
+)
+{
+   mstack_t * mstack = malloc(sizeof(seq_t) + 3*sizeof(int) + size*sizeof(mismatch_t));
+   if (mstack == NULL) {
+      fprintf(stderr, "error allocating mstack_t in 'new_mstack' (malloc): %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+   }
+
+   mstack->pos = 0;
+   mstack->lim = size;
+   mstack->seq = BAD_SEQ;
+   mstack->tau = 0;
+
+   return mstack;
+}
 
 
 void
