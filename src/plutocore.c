@@ -9,7 +9,8 @@ seqtoid
 {
   seq_t seqid = 0;
    for (int j = 0; j < slen ; j++) {
-      if (seq[j] == 'C' || seq[j] == 'c') seqid += 1;
+      if (seq[j] == 'A' || seq[j] == 'a') { }
+      else if (seq[j] == 'C' || seq[j] == 'c') seqid += 1;
       else if (seq[j] == 'G' || seq[j] == 'g') seqid += 2;
       else if (seq[j] == 'T' || seq[j] == 't') seqid += 3;
       else return BAD_SEQ;

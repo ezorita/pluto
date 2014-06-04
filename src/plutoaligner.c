@@ -21,7 +21,7 @@ main
 )
 {
    // Get a sequence and align it, return the loci list.
-   if (argc != 4) {
+   if (argc != 5) {
       fprintf(stderr, "usage: pluto <tau> <threads> <queryfile> <.pif file>\n");
       exit(1);
    }
@@ -29,12 +29,6 @@ main
   // Backtrace handler
    signal(SIGSEGV, SIGSEGV_handler); 
 
-   // Check seq len.
-   if(strlen(argv[1]) != 14) {
-      fprintf(stderr, "Error: Only seqs of len 14 are supported.\nusage: query <sequence> <.pif file>\n");
-      exit(EXIT_FAILURE);
-   }
-   
    // *************
    // Input parsing
    // *************
@@ -104,7 +98,6 @@ main
       .index  = index,
    };
 
-
    // *****************
    // Mapping algorithm
    // *****************
@@ -126,6 +119,13 @@ main
       
       // Build tree.
       tnode_t * root = build_tree(nleaves, seqid, tree, lstacks, mstacks, tau);
+
+      // DEBUG BUILD TREE:
+      fprintf(stdout, "[tree]\tleaves: %d\tnodes: %d\ntree struct:\n", nleaves, tree->nnodes);
+      for (int i = 0; i < tree->nnodes; i++)
+         fprintf(stdout, "[node %p]\tleft %p\tright %p\n", tree->node + i, tree->node[i].lchild, tree->node[i].rchild);
+      fprintf(stdout, "[stacks]\tloci size: %d\tmism size: %d\n", lstacks->count, mstacks->count);
+      exit(0);
 
       // Set up arg struct.
       args.nleaves = nleaves;
@@ -317,6 +317,7 @@ build_tree
             node->data[a] = lstck;
             node->data[a]->seq = MERGE_PENDING;
             node->data[a]->tau = a;
+            break;
          }
       }
    }
