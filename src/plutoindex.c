@@ -24,13 +24,6 @@ main
    outfile = strcat(outfile, ".pgf");
    int fd = open(outfile,O_CREAT | O_TRUNC | O_WRONLY, 0644);
    
-   // Allocate tree.
-   char * tree = (char *) calloc(sizeof(char), TREESZ);
-   if (tree == NULL) {
-      fprintf(stderr, "malloc(tree) failed: %s\n", strerror(errno));
-      exit(EXIT_FAILURE);
-   }
-
    // Allocate Loci-list pointers.
    loclst_t ** loclist = (loclst_t **) calloc(sizeof(loclst_t *), NSEQ);
    if (loclist == NULL) {
@@ -63,7 +56,7 @@ main
          if (i > 0) {
             // First write genome, then process index.
             last = writegen(fd, chunk, i, last);
-            procseqs(tree, loclist, loc, i, chunk);
+            procseqs(loclist, loc, i, chunk);
             loc += i;
             i = 0;
          }
@@ -82,7 +75,7 @@ main
       if (i + nread - 1 > CHUNKSZ) {
          // Write genome and process index.
          last = writegen(fd, chunk, i, last);
-         int offset = procseqs(tree, loclist, loc, i, chunk);
+         int offset = procseqs(loclist, loc, i, chunk);
          loc += i;
          i = offset;
       }
@@ -164,17 +157,15 @@ main
 int
 procseqs
 (
- char      * tree,
  loclst_t ** loclst,
  int         genpos,
  int         nbases,
  char      * chunk
 )
 // SYNOPSIS:                                                              
-//   Inserts nodes in the tree and updates the loci lists from a given set of bases.
+//   Updates the loci lists for a given set of bases.
 //                                                                        
 // PARAMETERS:                                                            
-//   tree:   1-bit binary tree.
 //   loclst: memory region containing pointers to a list of loci for each useq.
 //   genpos: absolute position in the genome of the first base of 'chunk'.
 //   nbases: number of valid bases present in 'chunk'.
@@ -184,7 +175,7 @@ procseqs
 //   Returns the number of valid bases left at the buffer.
 //                                                                        
 // SIDE EFFECTS:                                                          
-//   Modifies the contents of 'tree' and some *loclst may be allocated and/or updated.
+//   loclst_t pointers may be allocated and/or updated.
 //   
 {
    // Number of seqs.
@@ -195,8 +186,8 @@ procseqs
    // Process seqs.
    for (int i = 0; i < nseqs; i++) {
       char * seq = chunk + i;
-      uint    nids;
-      uint  * seqids = seqtoid(seq, &nids);
+      int    nids;
+      seq_t  * seqids = seqtoid_N(seq, &nids, SEQLEN);
 
       // Continue if there are too many 'N'.
       if(seqids == NULL) continue;
@@ -204,16 +195,6 @@ procseqs
       // For all sequence ids...
       for (int j = 0; j < nids; j++) {
          uint sid = seqids[j] & SEQMASK;
-
-         // Insert nodes in the tree.
-         for (int h = 0; h < SEQLEN; h++) {
-            // Increase height.
-            sid += 0x10000000;
-            // ENABLE node bit.
-            uint bitpos = nodeaddr(sid);
-
-            tree[bitpos/8] |= 1 << (bitpos%8);
-         }
 
          // Add locus to loclst.
          sid &= SEQMASK;

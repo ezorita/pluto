@@ -11,7 +11,7 @@ QUERY_HEADERS= plutocore.h
 QUERY_OBJECTS= plutocore.o
 
 ALIGN_SOURCES= plutoaligner.c mergesort.c sma.c
-ALIGN_HEADERS= plutoaligner.h plutocore.h sma.h
+ALIGN_HEADERS= plutoaligner.h plutocore.h sma.h mergesort.h
 ALIGN_OBJECTS= plutocore.o
 
 INDEX_OBJ= $(addprefix $(OBJ_DIR)/,$(INDEX_OBJECTS))
@@ -28,7 +28,7 @@ ALIGN_SRC= $(addprefix $(SRC_DIR)/,$(ALIGN_SOURCES))
 
 INCLUDES= $(addprefix -I,$(SRC_DIR))
 CFLAGS= -std=c99 -Wall -g
-LDLIBS= -lm
+LDLIBS= -lm -lpthread
 CC= gcc
 
 all: plutoindex plutoquery pluto

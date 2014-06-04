@@ -7,7 +7,7 @@
 
 
 #ifndef __PLUTO_CORE_
-#define __PLUTO_CODE_
+#define __PLUTO_CORE_
 
 // Maximum number of unknowns (sequences with count('N') > MAXUNKN will not be indexed).
 #define MAXUNKN  3
@@ -66,38 +66,13 @@
 // Type definitions
 typedef unsigned int seq_t;
 typedef unsigned int loc_t;
-typedef struct tnode_t tnode_t;
-typedef struct lstack_t lstack_t;
 typedef struct mismatch_t mismatch_t;
+typedef struct lstack_t lstack_t;
 typedef struct mstack_t mstack_t;
-typedef struct stackbuf_t stackbuf_t;
 
-struct tnode_t {
-   char               mintau;
-   char               leaf;
-   seq_t              status;
-   struct tnode_t   * lchild;
-   struct tnode_t   * rchild;
-   struct lstack_t ** data;
-   // leaf only:
-   struct mstack_t ** mstack;
-   char             * extras;
-};
-
-struct tree_t {
-   int              nnodes;
-   struct tnode_t * node;
-};
-
-
-struct lstackbuf_t {
-   int                count;
-   struct lstack_t ** stack;
-};
-
-struct mstackbuf_t {
-   int                count;
-   struct mstack_t ** stack;
+struct mismatch_t {
+   seq_t seq;
+   char  offset;
 };
 
 struct lstack_t {
@@ -106,11 +81,6 @@ struct lstack_t {
    int   lim;
    int   pos;
    loc_t u[];
-};
-
-struct mismatch_t {
-   seq_t seq;
-   char  offset;
 };
 
 struct mstack_t {
@@ -123,17 +93,17 @@ struct mstack_t {
 
 // Shared functions headers.
 seq_t       seqtoid       (char *, int);
-seq_t     * seqtoid_N     (char *, uint *, int);
-char      * idtoseq       (uint, int);
-uint        nodeaddr      (uint);
-uint        getloci       (uint, uint *, uint *, uint **);
-uint        addloci       (uint, uint *, uint *, ustack_t **);
-ustack_t  * new_ustack    (uint);
-cstack_t  * new_cstack    (uint);
-ustack_t ** new_uarray    (uint, uint);
-cstack_t ** new_carray    (uint, uint);
-void        ustack_add    (ustack_t **, uint);
-void        cstack_add    (cstack_t **, uchar *, uint);
-uint        get_prefixlen (uint, uint, int);
+seq_t     * seqtoid_N     (char *, int *, int);
+char      * idtoseq       (seq_t, int);
+loc_t       getloci       (seq_t, loc_t, loc_t *, loc_t *, loc_t **);
+loc_t       addloci       (seq_t, loc_t *, loc_t *, lstack_t **);
+loc_t       lookup        (int, mstack_t *, loc_t *, loc_t *, lstack_t **);
+lstack_t  * new_lstack    (int);
+mstack_t  * new_mstack    (int);
+void        lstack_add    (lstack_t **, loc_t);
+void        copy_lstack   (lstack_t **, lstack_t **);
+void        copy_mstack   (mstack_t **, mstack_t **);
+int         mcomp         (const void *, const void *);
+int         loccomp       (const void *, const void *);
 
 #endif

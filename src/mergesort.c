@@ -1,3 +1,5 @@
+#include "mergesort.h"
+
 void *
 _mergesort
 (
@@ -126,4 +128,16 @@ mergesort
    free(buffer);
    
    return numels - args.repeats;
+}
+
+int
+ualpha
+(
+   const void *a,
+   const void *b
+) 
+{
+   char *u1 = (char *)a;
+   char *u2 = (char *)b;
+   return strcmp(u2, u1);
 }

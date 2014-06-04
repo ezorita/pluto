@@ -44,9 +44,6 @@ main
    char * queryfile = argv[3];
    char * indexfile = argv[4];
 
-   // DEBUG:
-   fprintf(stderr, "load params: tau=%d\tseq=%s\tfilename=%s\n", tau, seq, indexfile);
-   
    // *********************
    // Load index/data files
    // *********************
@@ -67,9 +64,10 @@ main
    }
 
    // Read file.
-   uint    num_query;
-   char ** all_query = read_file(queryfile, &num_query);
-   mergesort((void **) all_query, num_query, &ualpha, maxthreads);
+   int     num_query;
+   FILE *  qf = fopen(queryfile, "r");
+   char ** all_query = read_file(qf, &num_query);
+   mergesort((void **) all_query, num_query, ualpha, maxthreads);
 
 
    // ******************
@@ -77,7 +75,7 @@ main
    // ******************
 
    // Alloc mstack and lstack buffers based on the length of the first seq.
-   int nnodes = 2*strlen(all_query[0]/SEQLEN)-1;
+   int nnodes = 2*strlen(all_query[0])/SEQLEN-1;
    lstackbuf_t * lstacks = malloc(sizeof(lstackbuf_t));
    mstackbuf_t * mstacks = malloc(sizeof(mstackbuf_t));
 
@@ -94,7 +92,7 @@ main
 
    // Alloc an empty merge-tree with one node:
    tree_t * tree = malloc(sizeof(tree_t));
-   tree->node   = malloc(sizeof(node_t));
+   tree->node    = malloc(sizeof(tnode_t));
    tree->node[0].data   = (lstack_t **) malloc((tau+1)*sizeof(lstack_t *));
    tree->node[0].mstack = (mstack_t **) malloc((tau+1)*sizeof(mstack_t *));
    tree->nnodes = 1;
@@ -118,16 +116,16 @@ main
       char * query    = all_query[q];
       int    querylen = strlen(query);
       int    nleaves  = querylen/SEQLEN;
-      seq_t  seqid[nchunks];
+      seq_t  seqid [nleaves];
 
-      for (int c = 0; c < nchunks; c++)
+      for (int c = 0; c < nleaves; c++)
          seqid[c]  = seqtoid(query + c*SEQLEN, SEQLEN);
       
       int   a            = 0;
       loc_t merge_output = MERGE_EMPTY;
       
       // Build tree.
-      node_t * root = build_tree(nleaves, seqid, tree, lstacks, mstacks, tau);
+      tnode_t * root = build_tree(nleaves, seqid, tree, lstacks, mstacks, tau);
 
       // Set up arg struct.
       args.nleaves = nleaves;
@@ -149,7 +147,7 @@ main
       } else {
          lstack_t * loci = root->data[a];
          for (int i = 0; i < loci->pos; i++) {
-            fprintf(stdout, "\t%lu\n", loci->u[i]);
+            fprintf(stdout, "\t%du\n", loci->u[i]);
          }
       }
    }
@@ -359,9 +357,9 @@ merge_node
          // Compute extras.
          int slen   = strlen(args->query);
          int offset = parent->leaf * SEQLEN;
-         char extras[tau];
-         for (int i = 0; i < tau; i++) extras[i] = -1;
-         for (int i = 0; (i < tau) && (offset + i < slen); i++) extras[i] = args->query[offset + i];
+         char extras[targettau];
+         for (int i = 0; i < targettau; i++) extras[i] = -1;
+         for (int i = 0; (i < targettau) && (offset + i < slen); i++) extras[i] = args->query[offset + i];
       
          // Generate mismatches.
          sma(parent->mstack, parent->status, SEQLEN, extras, targettau);
@@ -397,9 +395,9 @@ merge_node
    }
 
    // Collect children loci and merge.
-   for (int a = 0; a <= tau; a++) {
+   for (int a = 0; a <= targettau; a++) {
       tnode_t *na, *nb;
-      if (a < tau - a) {
+      if (a < targettau - a) {
          na = parent->lchild;
          nb = parent->rchild;
       } else {
@@ -408,14 +406,14 @@ merge_node
       }
       
       // If anything goes wrong, update mintau and continue (Take into account that there may be untracked insertions from previous taus).
-      if (merge_node(na, min(a, tau-a)) != MERGE_OK && na->data[targettau]->pos == 0) {
+      if (merge_node(na, min(a, targettau-a), args) != MERGE_OK && na->data[targettau]->pos == 0) {
             parent->mintau = parent->lchild->mintau + parent->rchild->mintau;
             if (targettau < parent->mintau) return MERGE_EMPTY;
             continue;
       }
 
       // This repetition looks crappy, but it may avoid computing higher order taus.
-      if (merge_node(nb, max(a, tau-a)) != MERGE_OK && nb->data[targettau]->pos == 0) {
+      if (merge_node(nb, max(a, targettau-a), args) != MERGE_OK && nb->data[targettau]->pos == 0) {
          parent->mintau = parent->lchild->mintau + parent->rchild->mintau;
          if (targettau < parent->mintau) return MERGE_EMPTY;
          continue;
@@ -423,7 +421,7 @@ merge_node
 
       // Sequence distance between nodes.
       int seqdist = seqstart(parent->rchild) - seqstart(parent->lchild);
-      merge_lstack(parent->data, parent->lchild->data[a], parent->rchild->data[tau-a], seqdist, targettau, args->maxtau);
+      merge_lstack(parent->data, parent->lchild->data[a], parent->rchild->data[targettau-a], seqdist, targettau, args->maxtau);
    }
    parent->data[targettau]->seq = MERGE_DONE;
    if (parent->data[targettau]->pos == 0) {

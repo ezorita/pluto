@@ -7,7 +7,7 @@ seqtoid
  int   slen
 )
 {
-   seq_t seqid = 0;
+  seq_t seqid = 0;
    for (int j = 0; j < slen ; j++) {
       if (seq[j] == 'C' || seq[j] == 'c') seqid += 1;
       else if (seq[j] == 'G' || seq[j] == 'g') seqid += 2;
@@ -228,7 +228,7 @@ lookup
    lstack_t * lstack = *lstackp;
 
    // Avoid recomputing the same thing.
-   if (mstack->seq == lstack->seq) return;
+   if (mstack->seq == lstack->seq) return mstack->pos;
    
    // Get the number of loci in the genome. (Stored at index[0]).
    loc_t nloci = index[0];
@@ -301,7 +301,7 @@ new_lstack
 }
 
 
-lstack_t *
+mstack_t *
 new_mstack
 (
   int size
@@ -394,14 +394,13 @@ get_prefixlen
  seq_t seqb,
  int  slen
 )
-
 {
    int len = slen;
    // TODO:
    // - Seqmask depends on slen. (Maybe a macro SEQMASK(slen))
    seqa &= SEQMASK;
    seqb &= SEQMASK;
-   while (((seqa >> 2*(slen - len))&3 != (seqb >> 2*(slen - len))&3) && len > 0) len--;
+   while ((((seqa >> 2*(slen - len))&3) != ((seqb >> 2*(slen - len))&3)) && len > 0) len--;
    
    return len;
 }
