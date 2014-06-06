@@ -1,4 +1,5 @@
 #include "plutoaligner.h"
+#include <time.h>
 
 void SIGSEGV_handler(int sig) {
   void *array[10];
@@ -105,6 +106,8 @@ main
    for (int q = 0; q < num_query; q++) {
       if (all_query[q] == NULL) continue;
 
+      time_t start = clock();
+
       // Split in chunks.
       char * query    = all_query[q];
       int    querylen = strlen(query);
@@ -120,12 +123,16 @@ main
       // Build tree.
       tnode_t * root = build_tree(nleaves, seqid, tree, lstacks, mstacks, tau);
 
+      /*
       // DEBUG BUILD TREE:
       fprintf(stdout, "[tree]\tleaves: %d\tnodes: %d\ntree struct:\n", nleaves, tree->nnodes);
       for (int i = 0; i < tree->nnodes; i++)
-         fprintf(stdout, "[node %p]\tleft %p\tright %p\n", tree->node + i, tree->node[i].lchild, tree->node[i].rchild);
+         fprintf(stdout, "[node %p]\tleft %p\tright %p\tstack[0] %p\n", tree->node + i, tree->node[i].lchild, tree->node[i].rchild, tree->node[i].data[0]);
       fprintf(stdout, "[stacks]\tloci size: %d\tmism size: %d\n", lstacks->count, mstacks->count);
-      exit(0);
+      for (int i = 0; i < lstacks->count; i++)
+         fprintf(stdout, "[stack %d]\tl=%p\tm=%p\n", i, lstacks->stack+i, mstacks->stack+i);
+      //exit(0);
+      */
 
       // Set up arg struct.
       args.nleaves = nleaves;
@@ -135,194 +142,38 @@ main
       while (merge_output == MERGE_EMPTY && a <= tau) {
          merge_output = merge_node(root, a, &args);
          a++;
+         /*
+         // DEBUG TREE:
+         fprintf(stdout, "*** tree debug after tau=%d ***\n",a-1);
+         for (int i = 0; i < 2*nleaves-1; i++) {
+            if (tree->node[i].leaf < 0)
+               fprintf(stdout, "[node %p]\tmintau=%d\tleft %p\tright %p\t--", tree->node + i, tree->node[i].mintau, tree->node[i].lchild, tree->node[i].rchild);
+            else
+               fprintf(stdout, "[node %p]\tmintau=%d\tleaf\t%d\t\t\t--", tree->node + i, tree->node[i].mintau, tree->node[i].leaf);
+            for (int j = 0; j < tau + 1; j++) {
+               fprintf(stdout, "\tnloc[%d]=%d", j, tree->node[i].data[j]->pos);
+            }
+            fprintf(stdout, "\n");
+         }
+         // END DEBUG
+         */
       }
       
       // Restore the last used tau.
       a--;
       
       // Vomit loci:
-      fprintf(stdout, ">%s\n", all_query[q]);
+      fprintf(stdout, ">%s\t(%luus)\n", all_query[q], ((clock()-start)*1000000)/CLOCKS_PER_SEC);
       if (merge_output == MERGE_EMPTY) {
          fprintf(stdout,"\tsequence not found.\n");
       } else {
+         fprintf(stdout,"\tsequences at distance %d\n",a);
          lstack_t * loci = root->data[a];
          for (int i = 0; i < loci->pos; i++) {
-            fprintf(stdout, "\t%du\n", loci->u[i]);
+            fprintf(stdout, "\t%u\n", loci->u[i]);
          }
       }
    }
-}
-
-
-
-tnode_t *
-build_tree
-(
- int             nleaves,
- seq_t         * leaves,
- tree_t        * tree,
- lstackbuf_t   * lstacks,
- mstackbuf_t   * mstacks,
- char            tau
-)
-// First reshape the tree. Compute the number of inner nodes and leaves
-//  # of node for n leaves: 2n - 1
-//  # of inner nodes: n - 1
-// and make the new structure creating/freeing as many nodes as needed.
-//
-// TODO: This algorithm is quite crappy and super-exhaustive. May be improved but the 
-//       overall performance gain will most likely be zero.
-// TODO (improve): During reshaping check if any previously merged stack can be reused...
-//
-// Then assign stacks to each leave:
-// 0. Resize the stack buffer according to the num of nodes and alloc as many new stacks
-//    as necessary. (Only grow!)
-// 1. Go through stack buf and change MERGE_PENDING -> MERGE_AVAILABLE (NOT TO SEQS!!).
-// 2. For each seq look at the stack node if it has been precomputed and assign pointer.
-//    If not, just assign the first MERGE_AVAILABLE and switch to MERGE_PENDING.
-// 3. For the rest of the inner nodes also assign the first available buffer.
-{
-   // Alloc nodes.
-   int nnodes = 2*nleaves - 1;
-   if (nnodes > tree->nnodes) {
-      tree->node = realloc(tree->node, nnodes * sizeof(tnode_t));
-      for (int i = tree->nnodes; i < nnodes; i++) {
-         tree->node[i].data   = (lstack_t **) malloc((tau+1)*sizeof(lstack_t *));
-         tree->node[i].mstack = (mstack_t **) malloc((tau+1)*sizeof(mstack_t *));
-      }
-      tree->nnodes = nnodes;
-   }
-
-   // Connect nodes.
-   int firstidx = 0;
-   int nextidx  = 1;
-   int level    = 1;
-   for (int i = 0; i < nnodes; i++) {
-      tnode_t * node = tree->node + i;
-      node->mintau = 0;
-
-      // Node.
-      if (nextidx + 2*(i - firstidx) < nnodes) {
-         node->leaf   = -1;
-         node->status = NODE_OPEN; // NODE_OPEN, NODE_SET.
-         node->lchild = tree->node + nextidx + 2*(i - firstidx);
-         node->rchild = node->lchild + 1;
-      } 
-      // Leaf.
-      else {
-         node->leaf   = 1;
-         node->status = NODE_OPEN;
-         node->lchild = node->rchild = NULL;
-      }
-
-      // Next level.
-      if (i+1 < nnodes && i+1 == nextidx) {
-         firstidx = nextidx;
-         nextidx += (1 << level++);
-      }
-   }
-
-   // Realloc stack buffers.
-   // Loci stacks and Mismatch stacks share the same indices (they are taken by pairs).
-   if ((tau+1) * nnodes > lstacks->count) {
-      // Realloc loci and mismatch stack buffers.
-      lstacks->stack = (lstack_t **) realloc(lstacks->stack, nnodes * (tau+1) * sizeof(lstack_t *));
-      mstacks->stack = (mstack_t **) realloc(mstacks->stack, nnodes * (tau+1) * sizeof(mstack_t *));
-      if (lstacks->stack == NULL || mstacks->stack == NULL) {
-         fprintf(stderr, "Buffer stack realloc error (build_tree): %s\n", strerror(errno));
-         exit(EXIT_FAILURE);
-      }
-      
-      // Initialize new loci stacks.
-      for (int i = lstacks->count; i < (tau+1)*nnodes; i++) {
-         lstacks->stack[i] = new_lstack(LOCI_STACKSIZE);
-         mstacks->stack[i] = new_mstack(MISM_STACKSIZE);
-      }
-
-      // Update buffer counts.
-      lstacks->count = (tau+1)*nnodes;
-      mstacks->count = (tau+1)*nnodes;
-
-   }
-
-   // Find repeats or reset stack otherwise.
-   for (int i = 0; i < (tau+1)*nnodes; i++) {
-      if (lstacks->stack[i]->seq > SEQMASK) {
-         lstacks->stack[i]->seq = MERGE_DONE;
-         lstacks->stack[i]->pos = 0;
-      }
-      else {
-         int repeat = 0;
-          for (int j = 0; j < nleaves; j++) {
-             if (lstacks->stack[i]->seq == leaves[j]) {
-                repeat = 1;
-                break;
-            }
-         }
-         if (!repeat) {
-            lstacks->stack[i]->seq = MERGE_DONE;
-            lstacks->stack[i]->pos = 0;
-         }
-      }
-   }
-
-   // Go through all leaf nodes by order. Assign stacks.
-   int leafcnt = 0;
-   int i = firstidx;
-   while (leafcnt < nleaves) {
-      tnode_t * leaf = tree->node + i++;
-      if (leaf->leaf < 0) continue;
-      leaf->leaf   = leafcnt;
-      leaf->status = leaves[leafcnt++];
-
-      // Look for precomputed loci and mismatch stacks.
-      for (int a = 0; a <= tau; a++) {
-         int found = 0;
-         for (int j = 0; j < (tau+1)*nnodes; j++) {
-            lstack_t * lstck = lstacks->stack[j];
-            if (lstck->seq == leaf->status && lstck->tau == a) {
-               leaf->data[a] = lstck;
-               leaf->mstack[a] = mstacks->stack[j];
-               found = 1;
-               break;
-            }
-         }
-
-         // If not found, just assign the first available.
-         if (found == 0) {
-            for (int j = 0; j < (tau+1)*nnodes; j++) {
-               if (lstacks->stack[j]->seq == MERGE_DONE) {
-                  leaf->data[a] = lstacks->stack[j];
-                  leaf->data[a]->seq = leaf->status;
-                  leaf->data[a]->tau = a;
-                  leaf->mstack[a] = mstacks->stack[j];
-                  break;
-               }
-            }
-         }
-      }
-      
-      // When done whith the last level, continue at the previous.
-      if (i == nnodes) i = firstidx - (1 << level);
-   }
-
-   // Assign stacks to the inner nodes.
-   for (int k = 0, j = 0; k < nnodes; k++) {
-      tnode_t * node = tree->node + k;
-      if (node->leaf >= 0) continue;
-      for (int a = 0; a <= tau; a++) {
-         while (j < (tau+1)*nnodes) {
-            lstack_t * lstck = lstacks->stack[j++];
-            if (lstck->seq != MERGE_DONE) continue;
-            node->data[a] = lstck;
-            node->data[a]->seq = MERGE_PENDING;
-            node->data[a]->tau = a;
-            break;
-         }
-      }
-   }
-
-   return tree->node;
 }
 
 int
@@ -361,12 +212,14 @@ merge_node
          char extras[targettau];
          for (int i = 0; i < targettau; i++) extras[i] = -1;
          for (int i = 0; (i < targettau) && (offset + i < slen); i++) extras[i] = args->query[offset + i];
-      
+
          // Generate mismatches.
          sma(parent->mstack, parent->status, SEQLEN, extras, targettau);
 
          // Lookup loci list.
          nloc = lookup(targettau, parent->mstack[targettau], args->lut, args->index, parent->data + targettau);
+         parent->data[targettau]->seq = parent->status;
+         parent->data[targettau]->tau = targettau;
       }
 
       // Check output.
@@ -424,7 +277,9 @@ merge_node
       int seqdist = seqstart(parent->rchild) - seqstart(parent->lchild);
       merge_lstack(parent->data, parent->lchild->data[a], parent->rchild->data[targettau-a], seqdist, targettau, args->maxtau);
    }
+
    parent->data[targettau]->seq = MERGE_DONE;
+
    if (parent->data[targettau]->pos == 0) {
       if (parent->status == NODE_OPEN) parent->mintau = targettau + 1;
       return MERGE_EMPTY;
@@ -486,15 +341,190 @@ merge_lstack
       int ref = llist[l] + seqdist;
       int nextr = 0;
       while (r + nextr < rstack->pos) {
-         int dist = rlist[r + (nextr++)] - ref;
+         int dist = rlist[r + nextr] - ref;
          if (dist >= -offset && dist <= offset) {
+            nextr++;
             if (dist == 0) stack->u[stack->pos++] = llist[l];
             else lstack_add(dest + abs(dist), llist[l] + dist);
          } else break;
       }
-      if (rlist[r] - ref > 0 || nextr > 0) l++;
+      if (rlist[r] > ref || nextr > 0) l++;
       else r++;
    }
+}
+
+
+tnode_t *
+build_tree
+(
+ int             nleaves,
+ seq_t         * leaves,
+ tree_t        * tree,
+ lstackbuf_t   * lstacks,
+ mstackbuf_t   * mstacks,
+ char            tau
+)
+// First reshape the tree. Compute the number of inner nodes and leaves
+//  # of node for n leaves: 2n - 1
+//  # of inner nodes: n - 1
+// and make the new structure creating/freeing as many nodes as needed.
+//
+// TODO: This algorithm is quite crappy and super-exhaustive. May be improved but the 
+//       overall performance gain will most likely be zero.
+// TODO (improve): During reshaping check if any previously merged stack can be reused...
+//
+// Then assign stacks to each leave:
+// 0. Resize the stack buffer according to the num of nodes and alloc as many new stacks
+//    as necessary. (Only grow!)
+// 1. Go through stack buf and change MERGE_PENDING -> MERGE_AVAILABLE (NOT TO SEQS!!).
+// 2. For each seq look at the stack node if it has been precomputed and assign pointer.
+//    If not, just assign the first MERGE_AVAILABLE and switch to MERGE_PENDING.
+// 3. For the rest of the inner nodes also assign the first available buffer.
+{
+   int nnodes = 2*nleaves - 1;
+   // Realloc stack buffers.
+   // Loci stacks and Mismatch stacks share the same indices (they are taken by pairs).
+   if ((tau+1) * nnodes > lstacks->count) {
+      // Realloc loci and mismatch stack buffers.
+      lstacks->stack = (lstack_t **) realloc(lstacks->stack, nnodes * (tau+1) * sizeof(lstack_t *));
+      mstacks->stack = (mstack_t **) realloc(mstacks->stack, nnodes * (tau+1) * sizeof(mstack_t *));
+      if (lstacks->stack == NULL || mstacks->stack == NULL) {
+         fprintf(stderr, "Buffer stack realloc error (build_tree): %s\n", strerror(errno));
+         exit(EXIT_FAILURE);
+      }
+      
+      // Initialize new loci stacks.
+      for (int i = lstacks->count; i < (tau+1)*nnodes; i++) {
+         lstacks->stack[i] = new_lstack(LOCI_STACKSIZE);
+         mstacks->stack[i] = new_mstack(MISM_STACKSIZE);
+      }
+
+      // Update buffer counts.
+      lstacks->count = (tau+1)*nnodes;
+      mstacks->count = (tau+1)*nnodes;
+
+   }
+
+   // Alloc nodes.
+   if (nnodes > tree->nnodes) {
+      tree->node = realloc(tree->node, nnodes * sizeof(tnode_t));
+
+      // The new nodes will point to the new stacks.
+      for (int i = tree->nnodes; i < nnodes; i++) {
+         tree->node[i].data   = lstacks->stack + (tau+1) * i;
+         tree->node[i].mstack = mstacks->stack + (tau+1) * i;
+      }
+
+      tree->nnodes = nnodes;
+   }
+
+   // Connect nodes.
+   int firstidx = 0;
+   int nextidx  = 1;
+   int level    = 0;
+   for (int i = 0; i < nnodes; i++) {
+      tnode_t * node = tree->node + i;
+      node->mintau = 0;
+
+      // Node.
+      if (nextidx + 2*(i - firstidx) < nnodes) {
+         node->leaf   = -1;
+         node->status = NODE_OPEN; // NODE_OPEN, NODE_SET.
+         node->lchild = tree->node + nextidx + 2*(i - firstidx);
+         node->rchild = node->lchild + 1;
+      } 
+      // Leaf.
+      else {
+         node->leaf   = 1;
+         node->status = NODE_OPEN;
+         node->lchild = node->rchild = NULL;
+      }
+
+      // Next level.
+      if (i+1 < nnodes && i+1 == nextidx) {
+         level++;
+         firstidx = nextidx;
+         nextidx += (1 << level);
+      }
+   }
+   
+   // Find repeats or reset stack otherwise.
+   for (int i = 0; i < (tau+1)*nnodes; i += tau + 1) {
+      if (lstacks->stack[i]->seq > SEQMASK) {
+         for (int a = 0; a < tau+1; a++) {
+            lstacks->stack[i]->seq = MERGE_DONE;
+            lstacks->stack[i+a]->pos = 0;
+         }
+      }
+      else {
+          for (int j = 0; j < nleaves; j++) {
+             if (lstacks->stack[i]->seq == leaves[j]) {
+                continue;
+            }
+         }
+         for (int a = 0; a < tau+1; a++) {
+            lstacks->stack[i+a]->seq = MERGE_DONE;
+            lstacks->stack[i+a]->pos = 0;
+         }
+      }
+   }
+
+   // Go through all leaf nodes by order. Assign stacks.
+   int leafcnt = 0;
+   int i = firstidx;
+   while (leafcnt < nleaves) {
+      tnode_t * leaf = tree->node + i++;
+      if (leaf->leaf < 0) continue;
+      leaf->leaf   = leafcnt;
+      leaf->status = leaves[leafcnt++];
+
+      // Look for precomputed loci and mismatch stacks.
+      int found = 0;
+      for (int j = 0; j < (tau+1)*nnodes; j += tau+1) {
+         if (lstacks->stack[j]->seq == leaf->status) {
+            leaf->data   = lstacks->stack + j;
+            leaf->mstack = mstacks->stack + j;
+            found = 1;
+            break;
+         }
+      }
+
+      // If not found, just assign the first available.
+      if (found == 0) {
+         for (int j = 0; j < (tau+1)*nnodes; j += tau+1) {
+            if (lstacks->stack[j]->seq == MERGE_DONE) {
+               leaf->data      = lstacks->stack + j;
+               leaf->mstack    = mstacks->stack + j;
+               for (int a = 0; a < tau + 1; a++) {
+                  leaf->data[a]->seq = MERGE_PENDING;
+                  leaf->data[a]->tau = a;
+               }
+               break;
+            }
+         }
+      }
+      
+      // When done whith the last level, continue at the previous.
+      if (i == nnodes) i = firstidx - (1 << (level-1));
+   }
+
+   // Assign stacks to the inner nodes.
+   for (int k = 0, j = 0; k < nnodes; k++) {
+      tnode_t * node = tree->node + k;
+      if (node->leaf >= 0) continue;
+      while (j < (tau+1)*nnodes) {
+         if (lstacks->stack[j]->seq != MERGE_DONE) { j++; continue; }
+         node->data = lstacks->stack + j;
+         for (int a = 0; a < tau+1; a++) {
+            node->data[a]->seq = MERGE_PENDING;
+            node->data[a]->tau = a;
+         }
+         break;
+      }
+
+   }
+
+   return tree->node;
 }
 
 char **

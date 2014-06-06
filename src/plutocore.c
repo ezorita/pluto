@@ -14,7 +14,7 @@ seqtoid
       else if (seq[j] == 'G' || seq[j] == 'g') seqid += 2;
       else if (seq[j] == 'T' || seq[j] == 't') seqid += 3;
       else return BAD_SEQ;
-      seqid <<= 2;
+      if (j < slen-1) seqid <<= 2;
    }
 
    return seqid;   
@@ -151,12 +151,15 @@ getloci
    // Find the next node to infer the offset.
    loc_t end = 0;
    seq_id++;
-   while (seq_id < NSEQ)
-      if (lut[seq_id] != 0) break;
+   while (seq_id < NSEQ) {
+      if (lut[seq_id] != 0) {
+         end = lut[seq_id];
+         break;
+      }
       else seq_id++;
+   }
 
-   if (seq_id < NSEQ) end = lut[seq_id];
-   else               end = nloci;
+   if (seq_id >= NSEQ) end = nloci;
 
    // Point to the beginning of the list and return the list size.
    *list = index + start;
@@ -197,9 +200,9 @@ addloci
    // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
    
    // Realloc the stack if needed.
-   if (lstack->pos + nloc > lstack->lim) {
+   if (lstack->pos + nloc >= lstack->lim) {
       loc_t newsize = lstack->pos + nloc;
-      lstack_t * p = realloc(lstack, (newsize+2) * sizeof(loc_t));
+      lstack_t * p = realloc(lstack, sizeof(seq_t) + 3*sizeof(int) + newsize * sizeof(loc_t));
       if (p == NULL) {
          fprintf(stderr, "error extending lstack (realloc): %s\n", strerror(errno));
          exit(EXIT_FAILURE);
@@ -234,11 +237,6 @@ lookup
    // Get the number of loci in the genome. (Stored at index[0]).
    loc_t nloci = index[0];
 
-   // Reset loci stack.
-   lstack->pos = 0;
-   lstack->tau = tau;
-
-   loc_t total = 0;
    for (int i = 0; i < mstack->pos; i++) {
       // Get the loci list.
       loc_t * list;
@@ -248,10 +246,10 @@ lookup
       // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
    
       // Realloc the stack if needed.
-      if (lstack->pos + nloc > lstack->lim) {
+      if (lstack->pos + nloc >= lstack->lim) {
          loc_t newsize = 2*lstack->lim;
          while (newsize < lstack->pos + nloc) newsize *= 2;
-         lstack_t * p = realloc(lstack, 2*sizeof(int) + newsize*sizeof(loc_t));
+         lstack_t * p = realloc(lstack, sizeof(seq_t) + 3*sizeof(int) + newsize*sizeof(loc_t));
          if (p == NULL) {
             fprintf(stderr, "error extending lstack (realloc): %s\n", strerror(errno));
             exit(EXIT_FAILURE);
@@ -263,7 +261,6 @@ lookup
       // Copy data and update index.
       memcpy(lstack->u + lstack->pos, list, nloc*sizeof(loc_t));
       lstack->pos += nloc;
-      total       += nloc;
       
       // Add offset now and forget about it! (Less painful option)
       loc_t offset;
@@ -274,10 +271,11 @@ lookup
       }
    }
 
-   // Sort loci.
-   qsort(lstack->u, lstack->pos, sizeof(loc_t), loccomp);
+   // Sort loci if different loci were mixed.
+   if (mstack->pos > 1 && lstack->pos > 1)
+      qsort(lstack->u, lstack->pos, sizeof(loc_t), loccomp);
 
-   return total;
+   return lstack->pos;
 }
 
 
@@ -359,7 +357,7 @@ copy_lstack
    lstack_t * src = *srcp;
    lstack_t * dst;
    
-   size_t dstsz = src->pos*sizeof(loc_t) + 2*sizeof(int) + sizeof(seq_t);
+   size_t dstsz = src->pos*sizeof(loc_t) + 3*sizeof(int) + sizeof(seq_t);
    dst = *dstp = realloc(*dstp, dstsz);
 
    memcpy(dst, src, dstsz);
@@ -376,7 +374,7 @@ copy_mstack
    mstack_t * src = *srcp;
    mstack_t * dst;
    
-   size_t dstsz = src->pos*sizeof(mismatch_t) + 2*sizeof(int) + sizeof(seq_t);
+   size_t dstsz = src->pos*sizeof(mismatch_t) + 3*sizeof(int) + sizeof(seq_t);
    dst = *dstp = realloc(*dstp, dstsz);
    if (dst == NULL) {
       fprintf(stderr, "error while copying mstack (copy_mstack/realloc): %s\n", strerror(errno));
@@ -407,23 +405,6 @@ get_prefixlen
 }
 
 int
-mcomp
-(
- const void * a,
- const void * b
- )
-{
-   mismatch_t * ma = (mismatch_t *) a;
-   mismatch_t * mb = (mismatch_t *) b;
-   if (ma->seq > mb->seq)
-      return 1;
-   else if (ma->seq < mb->seq)
-      return -1;
-   else
-      return 0;
-}
-
-int
 loccomp
 (
  const void * a,
@@ -432,9 +413,9 @@ loccomp
 {
    loc_t * la = (loc_t *) a;
    loc_t * lb = (loc_t *) b;
-   if (la > lb)
+   if (*la > *lb)
       return 1;
-   else if (la < lb)
+   else if (*la < *lb)
       return -1;
    else return 0;
 }

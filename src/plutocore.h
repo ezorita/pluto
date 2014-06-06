@@ -103,7 +103,6 @@ mstack_t  * new_mstack    (int);
 void        lstack_add    (lstack_t **, loc_t);
 void        copy_lstack   (lstack_t **, lstack_t **);
 void        copy_mstack   (mstack_t **, mstack_t **);
-int         mcomp         (const void *, const void *);
 int         loccomp       (const void *, const void *);
 
 #endif

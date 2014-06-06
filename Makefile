@@ -27,7 +27,7 @@ ALIGN_DEPS= $(addprefix $(SRC_DIR)/,$(ALIGN_SOURCES) $(ALIGN_HEADERS)) $(ALIGN_O
 ALIGN_SRC= $(addprefix $(SRC_DIR)/,$(ALIGN_SOURCES))
 
 INCLUDES= $(addprefix -I,$(SRC_DIR))
-CFLAGS= -std=c99 -Wall -g
+CFLAGS= -std=c99 -Wall -g -O3
 LDLIBS= -lm -lpthread
 CC= gcc
 
