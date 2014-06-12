@@ -1,4 +1,5 @@
 #include "plutoaligner.h"
+#include "mergesort.h"
 #include <time.h>
 
 void SIGSEGV_handler(int sig) {
@@ -162,11 +163,21 @@ main
       // Restore the last used tau.
       a--;
       
-      // Vomit loci:
+      // Vomit loci: 
+      /*
       fprintf(stdout, ">%s\t(%luus)\n", all_query[q], ((clock()-start)*1000000)/CLOCKS_PER_SEC);
       if (merge_output == MERGE_EMPTY) {
          fprintf(stdout,"\tsequence not found.\n");
       } else {
+         fprintf(stdout,"\tsequences at distance %d\n",a);
+         lstack_t * loci = root->data[a];
+         for (int i = 0; i < loci->pos; i++) {
+            fprintf(stdout, "\t%u\n", loci->u[i]);
+         }
+      }
+      */
+      if (merge_output != MERGE_EMPTY) {
+         fprintf(stdout, ">%s\t(%luus)\n", all_query[q], ((clock()-start)*1000000)/CLOCKS_PER_SEC);
          fprintf(stdout,"\tsequences at distance %d\n",a);
          lstack_t * loci = root->data[a];
          for (int i = 0; i < loci->pos; i++) {
@@ -288,7 +299,8 @@ merge_node
    parent->status = NODE_SET;
    
    // Sort.
-   qsort(parent->data[targettau]->u, parent->data[targettau]->pos, sizeof(loc_t), loccomp);
+   mergesort_loc(parent->data[targettau]->u, parent->data[targettau]->pos);
+   //qsort(parent->data[targettau]->u, parent->data[targettau]->pos, sizeof(loc_t), loccomp);
 
    return MERGE_OK;
 }

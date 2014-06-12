@@ -1,4 +1,6 @@
 #include "plutocore.h"
+#include "mergesort.h"
+
 
 seq_t
 seqtoid
@@ -230,12 +232,14 @@ lookup
 )
 {
    lstack_t * lstack = *lstackp;
-
    // Avoid recomputing the same thing.
-   if (mstack->seq == lstack->seq) return mstack->pos;
+   if (mstack->seq == (*lstackp)->seq) return mstack->pos;
    
    // Get the number of loci in the genome. (Stored at index[0]).
    loc_t nloci = index[0];
+   int intervals[mstack->pos + 1];
+   int nints = 0;
+   intervals[0] = 0;
 
    for (int i = 0; i < mstack->pos; i++) {
       // Get the loci list.
@@ -243,9 +247,7 @@ lookup
       loc_t   nloc = getloci(mstack->m[i].seq, nloci, lut, index, &list);
       if (nloc == 0) continue;
 
-      // TODO: CHECK HERE FOR POSSIBLE HIGHLY REPEATED SEQUENCES.
-   
-      // Realloc the stack if needed.
+         // Realloc the stack if needed.
       if (lstack->pos + nloc >= lstack->lim) {
          loc_t newsize = 2*lstack->lim;
          while (newsize < lstack->pos + nloc) newsize *= 2;
@@ -261,21 +263,29 @@ lookup
       // Copy data and update index.
       memcpy(lstack->u + lstack->pos, list, nloc*sizeof(loc_t));
       lstack->pos += nloc;
+
+      // Register Interval.
+      intervals[++nints] = lstack->pos;
       
       // Add offset now and forget about it! (Less painful option)
-      loc_t offset;
+      char offset;
       if ((offset = mstack->m[i].offset) != 0) {
          for (int i = lstack->pos - nloc; i < lstack->pos; i++) {
             lstack->u[i] += offset;
          }
       }
+   
    }
 
    // Sort loci if different loci were mixed.
-   if (mstack->pos > 1 && lstack->pos > 1)
-      qsort(lstack->u, lstack->pos, sizeof(loc_t), loccomp);
+   if (mstack->pos > 1 && lstack->pos > 1) {
+      //mergesort_loc_int(lstack->u, intervals, nints-1, lstack->pos);
+      radix_sort(lstack->u, 0, lstack->pos, 24);
+   }
+      // mergesort_loc(lstack->u, lstack->pos);
+      //qsort(lstack->u, lstack->pos, sizeof(loc_t), loccomp);
 
-   return lstack->pos;
+   return (*lstackp)->pos;
 }
 
 

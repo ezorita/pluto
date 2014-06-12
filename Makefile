@@ -27,7 +27,7 @@ ALIGN_DEPS= $(addprefix $(SRC_DIR)/,$(ALIGN_SOURCES) $(ALIGN_HEADERS)) $(ALIGN_O
 ALIGN_SRC= $(addprefix $(SRC_DIR)/,$(ALIGN_SOURCES))
 
 INCLUDES= $(addprefix -I,$(SRC_DIR))
-CFLAGS= -std=c99 -Wall -g -O3
+CFLAGS= -std=c99 -Wall -g -pg -O3
 LDLIBS= -lm -lpthread
 CC= gcc
 
@@ -46,4 +46,4 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(SRC_DIR)/%.h
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -f $(wildcard $(OBJ_DIR)/*) $(BIN_DIR)/plutoindex
+	rm -f $(wildcard $(OBJ_DIR)/*) $(BIN_DIR)/plutoindex $(BIN_DIR)/plutoquery $(BIN_DIR)/pluto

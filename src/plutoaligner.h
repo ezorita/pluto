@@ -1,6 +1,5 @@
 #include "plutocore.h"
 #include "sma.h"
-#include "mergesort.h"
 #include <execinfo.h>
 #include <signal.h>
 #include <sys/types.h>
@@ -8,6 +7,8 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
+#ifndef _PLUTO_ALIGNER__
+#define _PLUTO_ALIGNER__
 // Type definitions
 typedef struct tnode_t     tnode_t;
 typedef struct tree_t      tree_t;
@@ -55,3 +56,5 @@ int        seqstart     (tnode_t *);
 int        merge_node   (tnode_t *, int, arg_t *);
 void       merge_lstack (lstack_t **, lstack_t *, lstack_t *, int, int, int);
 char    ** read_file    (FILE *, int *);
+
+#endif
