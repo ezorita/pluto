@@ -271,14 +271,14 @@ merge_node
       }
       
       // If anything goes wrong, update mintau and continue (Take into account that there may be untracked insertions from previous taus).
-      if (merge_node(na, min(a, targettau-a), args) != MERGE_OK && na->data[targettau]->pos == 0) {
+      if (merge_node(na, min(a, targettau-a), args) != MERGE_OK && na->data[min(a, targettau-a)]->pos == 0) {
             parent->mintau = parent->lchild->mintau + parent->rchild->mintau;
             if (targettau < parent->mintau) return MERGE_EMPTY;
             continue;
       }
 
       // This repetition looks crappy, but it may avoid computing higher order taus.
-      if (merge_node(nb, max(a, targettau-a), args) != MERGE_OK && nb->data[targettau]->pos == 0) {
+      if (merge_node(nb, max(a, targettau-a), args) != MERGE_OK && nb->data[max(a, targettau-a)]->pos == 0) {
          parent->mintau = parent->lchild->mintau + parent->rchild->mintau;
          if (targettau < parent->mintau) return MERGE_EMPTY;
          continue;
@@ -287,6 +287,12 @@ merge_node
       // Sequence distance between nodes.
       int seqdist = seqstart(parent->rchild) - seqstart(parent->lchild);
       merge_lstack(parent->data, parent->lchild->data[a], parent->rchild->data[targettau-a], seqdist, targettau, args->maxtau);
+      // Debug.
+      /*
+      if ((parent->rchild->leaf > -1 || parent->lchild->leaf > -1) && targettau > 1)
+         fprintf(stderr, "stack merging\tsize(left)=%d\tsize(right)=%d\tsize(result)=%d\n",parent->lchild->data[a]->pos, parent->rchild->data[targettau-a]->pos, parent->data[targettau]->pos);
+      */
+      
    }
 
    parent->data[targettau]->seq = MERGE_DONE;

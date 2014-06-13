@@ -17,6 +17,7 @@
 
 // Sequence length:
 #define SEQLEN  14
+#define ANCLEN  9
 
 // Number of tree nodes:
 // ** N_{nodes} = \sum_{i=1}^{14}{4^i} = 4^{14} * \sum_{i=0}^{13}{(1/4)^i} = 4^{14}*\frac{1-(1/4)^14}{1-1/4}

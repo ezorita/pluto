@@ -158,6 +158,7 @@ int
 procseqs
 (
  loclst_t ** loclst,
+ char      * anchors,
  int         genpos,
  int         nbases,
  char      * chunk
@@ -172,7 +173,7 @@ procseqs
 //   chunk:  buffer containing the set of bases to be processed.
 //                                                                        
 // RETURN:                                                                
-//   Returns the number of valid bases left at the buffer.
+//   Returns the number of valid bases present at the buffer.
 //                                                                        
 // SIDE EFFECTS:                                                          
 //   loclst_t pointers may be allocated and/or updated.
