@@ -19,12 +19,12 @@ typedef struct chrstack_t chrstack_t;
 typedef struct chrom_t chrom_t;
 
 struct llst_t {
-   uint   pos;
-   uint   l[];
+   loc_t   pos;
+   loc_t   l[];
 };
 
 struct chrom_t {
-   uint   loc;
+   loc_t   loc;
    char * name;
 };
 
@@ -37,7 +37,7 @@ struct chrstack_t {
 // FUNCTION HEADERS.
 loclst_t     * new_loclist   (int);
 chrstack_t   * new_chrstack  (int);
-int            procseqs      (char *, loclst_t **, int, int, char *);
+int            procseqs      (loclst_t **, char *, int, int, char *, int);
 void           addlocus      (loclst_t **, int);
 void           addchrom      (chrstack_t **, char *, int);
 unsigned char  writegen      (int, char *, int, unsigned char);

@@ -67,6 +67,7 @@
 // Type definitions
 typedef unsigned int seq_t;
 typedef unsigned int loc_t;
+typedef unsigned long anchor_t;
 typedef struct mismatch_t mismatch_t;
 typedef struct lstack_t lstack_t;
 typedef struct mstack_t mstack_t;
@@ -95,6 +96,7 @@ struct mstack_t {
 // Shared functions headers.
 seq_t       seqtoid       (char *, int);
 seq_t     * seqtoid_N     (char *, int *, int);
+anchor_t  * anchorid_N    (char *, int *, int, int);
 char      * idtoseq       (seq_t, int);
 loc_t       getloci       (seq_t, loc_t, loc_t *, loc_t *, loc_t **);
 loc_t       addloci       (seq_t, loc_t *, loc_t *, lstack_t **);

@@ -2,8 +2,8 @@ SRC_DIR= src
 BIN_DIR= .
 OBJ_DIR= obj
 
-INDEX_SOURCES= plutoindex.c
-INDEX_HEADERS= plutoindex.h plutocore.h
+INDEX_SOURCES= plutoindex.c mergesort.c
+INDEX_HEADERS= plutoindex.h plutocore.h mergesort.h
 INDEX_OBJECTS= plutocore.o
 
 QUERY_SOURCES= plutoquery.c

@@ -1,5 +1,6 @@
 #include "plutoindex.h"
 
+
 int
 main
 (
@@ -25,11 +26,17 @@ main
    int fd = open(outfile,O_CREAT | O_TRUNC | O_WRONLY, 0644);
    
    // Allocate Loci-list pointers.
-   loclst_t ** loclist = (loclst_t **) calloc(sizeof(loclst_t *), NSEQ);
+   loclst_t ** loclist = (loclst_t **) calloc(NSEQ, sizeof(loclst_t *));
    if (loclist == NULL) {
       fprintf(stderr, "malloc(loclist) failed: %s\n", strerror(errno));
       exit(EXIT_FAILURE);
    }
+
+   // Allocate the anchor index.
+   ssize_t ancsize = 1;
+   for (int i = 0; i < 2*ANCLEN; i++) ancsize *= 4; // Number of bits.
+   ancsize /= 8;                                    // Number of bytes.
+   char * anchor_index = (char *) calloc(ancsize, sizeof(char));
 
    // Sequence name stack.
    chrstack_t * chrstack = new_chrstack(10);
@@ -44,7 +51,7 @@ main
    long loc = 0;
    unsigned char last = 0;
 
-   // Read file, fill tree and create a loci list for each sequence.
+   // Read file, create a loci and achor list for each sequence.
    while (end == 0) {
       // Read line and remove \n.
       nread = getline(&seq, &nchar, input);
@@ -56,7 +63,7 @@ main
          if (i > 0) {
             // First write genome, then process index.
             last = writegen(fd, chunk, i, last);
-            procseqs(loclist, loc, i, chunk);
+            procseqs(loclist, anchor_index, loc, i, chunk, 1);
             loc += i;
             i = 0;
          }
@@ -75,7 +82,7 @@ main
       if (i + nread - 1 > CHUNKSZ) {
          // Write genome and process index.
          last = writegen(fd, chunk, i, last);
-         int offset = procseqs(loclist, loc, i, chunk);
+         int offset = procseqs(loclist, anchor_index, loc, i, chunk, 0);
          loc += i;
          i = offset;
       }
@@ -84,15 +91,9 @@ main
       memcpy(chunk + i, seq, nread - 1);
       i += nread - 1;
    }
-   outfile[strlen(outfile)-2] = 't';
 
-   fd = open(outfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-   unsigned long wbytes = write(fd, tree, TREESZ*sizeof(char));
-   if (wbytes < TREESZ)
-      fprintf(stderr, "I/O error: tree (commited %lu bytes, %lu bytes written).\n", (unsigned long)TREESZ, wbytes);
+   // Close genome file.
    close(fd);
-
-   free(tree);
 
    // Write chromosome index.
    outfile[strlen(outfile)-2] = 'c';
@@ -102,6 +103,21 @@ main
       fprintf(chrout, "%u\n%s\n", chrstack->c[i]->loc, chrstack->c[i]->name);
    fprintf(chrout, "%u\n%s", chrstack->c[chrstack->pos-1]->loc, chrstack->c[chrstack->pos-1]->name);
    fclose(chrout);
+
+   // Write anchor index.
+   outfile[strlen(outfile)-2] = 'a';
+   
+   int ancfd = open(outfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+   off_t wbytes = 0;
+   while(wbytes < ancsize) {
+      wbytes += pwrite(ancfd, anchor_index + wbytes, (ancsize-wbytes)*sizeof(char), wbytes);
+      fprintf(stderr, "written: %lu / %lu\n", wbytes, ancsize);
+   }
+   if (wbytes < ancsize) {
+      fprintf(stderr,"I/O error: anchor index (commited %lu bytes, %lu bytes written): %s.\n", ancsize, wbytes, strerror(errno));
+   }
+   close(ancfd);
+   free(anchor_index);
 
    // Allocate index.
    int * index = (int *) calloc(sizeof(int), NSEQ);
@@ -158,10 +174,11 @@ int
 procseqs
 (
  loclst_t ** loclst,
- char      * anchors,
+ char      * anchor_index,
  int         genpos,
  int         nbases,
- char      * chunk
+ char      * chunk,
+ int         chrend
 )
 // SYNOPSIS:                                                              
 //   Updates the loci lists for a given set of bases.
@@ -180,15 +197,19 @@ procseqs
 //   
 {
    // Number of seqs.
-   int nseqs = nbases - SEQLEN + 1;
+   int lastanchor = nbases - (SEQLEN + ANCLEN) + 1;
+   int lastkmer   = nbases - SEQLEN + 1;
+   int nseqs = (chrend ? lastkmer : lastanchor);
+      
    int remainder = nbases - nseqs;
-   char * seq = malloc((SEQLEN+1) * sizeof(char));
+   char * seq = malloc((SEQLEN + ANCLEN + 1) * sizeof(char));
 
    // Process seqs.
-   for (int i = 0; i < nseqs; i++) {
-      char * seq = chunk + i;
-      int    nids;
-      seq_t  * seqids = seqtoid_N(seq, &nids, SEQLEN);
+   int i;
+   for (i = 0; i < nseqs; i++) {
+      char  * seq = chunk + i;
+      int     nids;
+      seq_t * seqids = seqtoid_N(seq, &nids, SEQLEN);
 
       // Continue if there are too many 'N'.
       if(seqids == NULL) continue;
@@ -198,11 +219,23 @@ procseqs
          uint sid = seqids[j] & SEQMASK;
 
          // Add locus to loclst.
-         sid &= SEQMASK;
          addlocus(loclst + sid, genpos + i);
       }
-
       free(seqids);
+
+      if (i >= lastanchor) continue;
+
+      // Anchors.
+      anchor_t * anchors = anchorid_N(seq, &nids, SEQLEN, ANCLEN);
+      
+      // Too many 'N'.
+      if(anchors == NULL) continue;
+      
+      // Add anchors.
+      for (int j=0; j<nids; j++) {
+         anchor_index[anchors[j]/8] |= 0x01 << anchors[j]%8;
+      }
+      
    }
 
    free(seq);
